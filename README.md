@@ -1,0 +1,2 @@
+## Overview
+This is a work-in-progress implementation of an in-memory key-value store written in C++, built without the STL, Boost, or other high-level library abstractions. The reason for this is for stronger runtime and memory guarantees, better control over every layer, and personal learning. 
