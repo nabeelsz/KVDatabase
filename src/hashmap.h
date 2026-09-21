@@ -1,6 +1,7 @@
 #include <cstdint>
 
 const int MAX_ENTRIES = 1024; 
+const int MAX_STRING_LENGTH = 512; 
 
 struct HashEntry {
     char* key; 
@@ -24,6 +25,7 @@ struct NodePool {
 }; 
 
 struct HashMap {
+    HashMap(); 
     ~HashMap(); 
 
     // Insert a KV-pair to the hashmap, the size is needed for memcpying of bytes. 
@@ -31,22 +33,10 @@ struct HashMap {
     // Return a KV pair's data, if the pair does not exist, then return size 0 and nullptr for data. 
     Result get(char* key); 
 
-    HashEntry map[MAX_ENTRIES]; 
+    HashEntry* map[MAX_ENTRIES]; 
     NodePool pool; 
     int num_entries = 0; 
 };
 
 // Based on the FNV1-A Hash Algorithm: https://www.ietf.org/archive/id/draft-eastlake-fnv-22.html#name-fnv-offset_basis
-int hash_func(char* key) {
-    // 16777619
-    uint32_t fnv_prime = 16777619; 
-    uint32_t fnv_offset = 2166136261; 
-    char* curr = key; 
-    uint32_t hash = fnv_offset; 
-    while (*curr != '\0') {
-        hash = hash ^ (unsigned char)*curr; 
-        hash = hash * fnv_prime;
-        curr++; 
-    }
-    return hash % MAX_ENTRIES; 
-}
+int hash_func(char* key);
