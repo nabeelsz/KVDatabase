@@ -1,10 +1,10 @@
 #include <database.h> 
 
-void KVDataBase::put(char* key, void* bytes, uint64_t size) {
+int KVDataBase::put(char* key, void* bytes, uint64_t size) {
     pthread_mutex_lock(&kv_lock); 
-    kv_map.insert(key, bytes, size); 
+    int err_code = kv_map.insert(key, bytes, size); 
     pthread_mutex_unlock(&kv_lock); 
-
+    return err_code; 
 }
 
 Result KVDataBase::get(char* key) {

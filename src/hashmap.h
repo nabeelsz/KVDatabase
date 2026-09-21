@@ -1,6 +1,7 @@
 #include <cstdint>
 
 const int MAX_ENTRIES = 1024; 
+
 struct HashEntry {
     char* key; 
     void* data;
@@ -26,8 +27,8 @@ struct HashMap {
     ~HashMap(); 
 
     // Insert a KV-pair to the hashmap, the size is needed for memcpying of bytes. 
-    void insert(char* key, void* bytes, uint64_t size); 
-    // Return a KV pair's data, if the pair does not exist, then return size -1 and nullptr for data. 
+    int insert(char* key, void* bytes, uint64_t size); 
+    // Return a KV pair's data, if the pair does not exist, then return size 0 and nullptr for data. 
     Result get(char* key); 
 
     HashEntry map[MAX_ENTRIES]; 
