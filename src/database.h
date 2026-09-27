@@ -1,3 +1,8 @@
+/*
+    database.h
+    This header file contains the class implementation of a database that supports key-value pairs. It currently supports an 
+    arbitrary amount of 1024 entries. 
+*/
 #include <cstdint> 
 #include <random> 
 #include <pthread.h> 

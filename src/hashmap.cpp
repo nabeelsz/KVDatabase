@@ -9,7 +9,6 @@ enum ErrCodes {
     FAILURE = -1
 };
 
-// Allocate the node pool to be used for the hashmap entries in the form of a linekd list. 
 NodePool::NodePool() {
     int num_allocated = 0; 
     HashEntry dummy_entry = HashEntry{nullptr, 0x0, 0, nullptr}; 
@@ -44,15 +43,14 @@ HashEntry* NodePool::get_node(char* key, void* bytes, uint64_t size) {
     return returned_node; 
 }
 
-// Initialize all entries to be nullptr, TODO: Maybe see if I can just memset it to be all nullptr instead of doing it in a loop?
 HashMap::HashMap() {
+    // Initialize all entries to be nullptr, TODO: Maybe see if I can just memset it to be all nullptr instead of doing it in a loop?
     for (int i = 0; i < MAX_ENTRIES; i++) {
         map[i] = nullptr; 
     }
 }
 
 HashMap::~HashMap() {
-    // Delete all allocations consisting from the node pool as well as entries in the map as well 
     // Firstly delete nodes from the linked list
     HashEntry* curr_node = pool.curr_available; 
     while (curr_node) {
@@ -78,12 +76,12 @@ HashMap::~HashMap() {
     assert(num_entries == 0); 
 }
 
-// TODO: Maybe make insert return an optional to indicate success? 
 int HashMap::insert(char* key, void* bytes, uint64_t size) {
     if (num_entries == MAX_ENTRIES) return FAILURE; 
     int hash = hash_func(key);
     HashEntry* new_entry = pool.get_node(key, bytes, size); 
-    // Next pointer is populated due to node pool so set it to nullptr, TODO: maybe instead of having the node pool be a linked 
+    // Next pointer is populated due to node pool so set it to nullptr
+    // TODO: maybe instead of having the node pool be a linked 
     // list, it can instead be an array of allocated pointers to avoid having to do this. 
     new_entry->next = nullptr; 
     HashEntry** curr_node = &map[hash];
@@ -104,7 +102,6 @@ int HashMap::insert(char* key, void* bytes, uint64_t size) {
     return SUCCESS; 
 }
 
-// TODO: Maybe return an optional to indicate success/failure? 
 Result HashMap::get(char* key) {
     int hash = hash_func(key); 
     HashEntry* current_node = map[hash]; 

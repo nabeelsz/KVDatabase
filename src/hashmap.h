@@ -1,3 +1,10 @@
+/*
+    Hashmap.h 
+    Contains the hash map class that supports basic functions from insertion and getting a KV pair's value. To support this, 
+    a node pool is pre-allocated so that there is zero dynamic memory allocation, and then nodes from the pool are used to 
+    populate the hash map. 
+*/
+
 #include <cstdint>
 
 const int MAX_ENTRIES = 1024; 
@@ -17,7 +24,10 @@ struct Result {
 
 // Pre-allocated memory pool for KV insertion and chaining 
 struct NodePool {
+    // Allocate the node pool to be used for the hashmap entries in the form of a linekd list. 
     NodePool(); 
+
+    // Get a node from the node pool with relevant metadata for it to be inserted. 
     HashEntry* get_node(char* key, void* bytes, uint64_t size); 
     
     // Linked list for available nodes 
@@ -25,11 +35,15 @@ struct NodePool {
 }; 
 
 struct HashMap {
+    // Initialize all entries to be empty and not containing anything. 
     HashMap(); 
+
+    // Deallocate all of the node pool allocations that are currently in the pool or in the hashmap. 
     ~HashMap(); 
 
     // Insert a KV-pair to the hashmap, the size is needed for memcpying of bytes. 
     int insert(char* key, void* bytes, uint64_t size); 
+
     // Return a KV pair's data, if the pair does not exist, then return size 0 and nullptr for data. 
     Result get(char* key); 
 
