@@ -44,7 +44,7 @@ HashEntry* NodePool::get_node(char* key, void* bytes, uint64_t size) {
 }
 
 HashMap::HashMap() {
-    // Initialize all entries to be nullptr, TODO: Maybe see if I can just memset it to be all nullptr instead of doing it in a loop?
+    // Initialize all entries to be nullptr
     for (int i = 0; i < MAX_ENTRIES; i++) {
         map[i] = nullptr; 
     }
@@ -77,19 +77,20 @@ HashMap::~HashMap() {
 }
 
 int HashMap::insert(char* key, void* bytes, uint64_t size) {
-    if (num_entries == MAX_ENTRIES) return FAILURE; 
+    if (num_entries == MAX_ENTRIES) {
+        return FAILURE; 
+    } 
     int hash = hash_func(key);
     HashEntry* new_entry = pool.get_node(key, bytes, size); 
     // Next pointer is populated due to node pool so set it to nullptr
     // TODO: maybe instead of having the node pool be a linked 
     // list, it can instead be an array of allocated pointers to avoid having to do this. 
     new_entry->next = nullptr; 
+    // Needs be a pointer to a pointer to change what the pointer in the map points to. 
     HashEntry** curr_node = &map[hash];
     HashEntry dummy_entry = HashEntry{nullptr, 0x0, 0, nullptr}; 
     HashEntry* prev_node = &dummy_entry;  
     // Iterate until we have found an empty entry to insert to 
-    // TODO: See if there's an easier way to insert without having to have a pointer to a pointer, maybe just change what the 
-    // array pointer points to?
     while (*curr_node) {
         prev_node = *curr_node; 
         assert(*curr_node != (*curr_node)->next); 
