@@ -4,10 +4,6 @@
 #include <cassert> 
 #include <cstdio> 
 
-enum ErrCodes {
-    SUCCESS, 
-    FAILURE = -1
-};
 
 NodePool::NodePool() {
     int num_allocated = 0; 
@@ -18,7 +14,7 @@ NodePool::NodePool() {
         curr->key = (char*)malloc(sizeof(char) * MAX_STRING_LENGTH); 
         // allocating an arbitrary number of bytes, TODO: decide maximum number of bytes we want to support, also is there a way
         // to avoid fragmentation? since some values may be ints which take up less bytes. Need to investigate.
-        curr->data = malloc(sizeof(char) * 64); 
+        curr->data = malloc(sizeof(char) * MAX_STRING_LENGTH); 
         curr->size = 0; 
         curr->next = nullptr; 
         // If first allocation then modify head variable to point to the first allocated
@@ -78,7 +74,7 @@ HashMap::~HashMap() {
 
 int HashMap::insert(char* key, void* bytes, uint64_t size) {
     if (num_entries == MAX_ENTRIES) {
-        return FAILURE; 
+        return ErrCodes::FAILURE; 
     } 
     int hash = hash_func(key);
     HashEntry* new_entry = pool.get_node(key, bytes, size); 
@@ -100,7 +96,7 @@ int HashMap::insert(char* key, void* bytes, uint64_t size) {
     prev_node->next = *curr_node; 
     num_entries++; 
     assert((*curr_node)->size == size); 
-    return SUCCESS; 
+    return ErrCodes::SUCCESS; 
 }
 
 Result HashMap::get(char* key) {
@@ -110,7 +106,7 @@ Result HashMap::get(char* key) {
         if (strcmp(key, current_node->key) == 0) break; 
         current_node = current_node->next; 
     }
-    return current_node ? Result{data: current_node->data, size: current_node->size} : Result{data: nullptr, size: 0};
+    return current_node ? Result{data: current_node->data, size: current_node->size} : Result{data: nullptr, size: ErrCodes::FAILURE};
 }
 
 // Based on the FNV1-A Hash Algorithm: https://www.ietf.org/archive/id/draft-eastlake-fnv-22.html#name-fnv-offset_basis

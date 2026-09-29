@@ -8,8 +8,13 @@
 #include <cstdint>
 
 const int MAX_ENTRIES = 1024; 
-const int MAX_STRING_LENGTH = 512; 
+// Maximum string length in bytes. This is used to cap the largest string a key can be, as well as the value. 
+const int MAX_STRING_LENGTH = 256; 
 
+enum ErrCodes {
+    SUCCESS, 
+    FAILURE = -1
+};
 struct HashEntry {
     char* key; 
     void* data;
@@ -19,7 +24,7 @@ struct HashEntry {
 
 struct Result {
     void* data; 
-    uint64_t size; 
+    int size; 
 };
 
 // Pre-allocated memory pool for KV insertion and chaining 
@@ -42,7 +47,7 @@ struct HashMap {
     ~HashMap(); 
 
     // Insert a KV-pair to the hashmap, the size is needed for memcpying of bytes. 
-    int insert(char* key, void* bytes, uint64_t size); 
+    int insert(char* key, void* bytes, int size); 
 
     // Return a KV pair's data, if the pair does not exist, then return size 0 and nullptr for data. 
     Result get(char* key); 
