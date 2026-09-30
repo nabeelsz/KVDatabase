@@ -25,7 +25,7 @@ struct ThreadArgs {
 
 
 bool run_op(char operation[CMD_LENGTH], char key[MAX_STRING_LENGTH], void* value, uint64_t size, KVDataBase* database, 
-    Result* get_result) 
+    Result*& get_result) 
     {
     if (strcmp(operation, "PUT") == 0) {
         int success = database->put(key, value, size); 
@@ -42,7 +42,6 @@ bool run_op(char operation[CMD_LENGTH], char key[MAX_STRING_LENGTH], void* value
 }
 
 void client_response(int client_fd, char cmd[CMD_LENGTH], void* value, uint64_t size, bool success) {
-    // Send over success or failure message
     const char* response; 
     if (success) {
         response = "Success!\n"; 
@@ -52,8 +51,11 @@ void client_response(int client_fd, char cmd[CMD_LENGTH], void* value, uint64_t 
     }
     int total_sent = 0; 
     int num_bytes = strlen(response); 
+
+    // Send over the response to the client, incrementing the pointer based on the number of bytes we have sent, ensuring onl
+    // the bytes we haven't sent are sent over. 
     while (total_sent < num_bytes) {
-        int bytes_sent = send(client_fd, (void*)response, num_bytes, MSG_NOSIGNAL); 
+        int bytes_sent = send(client_fd, (void*)response + total_sent, num_bytes - total_sent, MSG_NOSIGNAL); 
         if (bytes_sent == -1) {
             printf("ERROR: Client closed socket.\n"); 
             return; 
@@ -61,11 +63,11 @@ void client_response(int client_fd, char cmd[CMD_LENGTH], void* value, uint64_t 
         total_sent += bytes_sent; 
     }
 
-    // Send over GET value if op is a GET
+    // Send over GET value if op is a GET with the same methodology used in the response communication. 
     if (strcmp(cmd, "GET") == 0) {
         total_sent = 0; 
         while (total_sent < size) {
-            int bytes_sent = send(client_fd, value, size, MSG_NOSIGNAL); 
+            int bytes_sent = send(client_fd, value + total_sent, size - total_sent, MSG_NOSIGNAL); 
             if (bytes_sent == -1) {
                 printf("ERROR: Client closed socket.\n"); 
                 return; 
@@ -99,35 +101,38 @@ bool request_handler(char client_req[MAX_MSG_BYTES], KVDataBase* database, int c
     // Parse over the key.
     int num_read = 0; 
     int key_idx = 0; 
-    const int key_offset = 3; 
+    const int KEY_OFFSET = 3; 
     
     while (num_read < MAX_STRING_LENGTH) {
         // Space meaning that there is no more of the key to read. 
-        if (client_req[num_read + key_offset ] == ' ') {
+        if (client_req[num_read + KEY_OFFSET ] == ' ') {
             key[key_idx++] = '\0'; 
         }
-        key[key_idx++] = client_req[num_read + key_offset];
+        key[key_idx++] = client_req[num_read + KEY_OFFSET];
         num_read++;  
     }
-    if (num_read > MAX_STRING_LENGTH) {
+
+    // If we've reached the end of the maximum length of the key and there's still more then mark it as invalid. 
+    if (num_read == MAX_STRING_LENGTH && client_req[num_read + KEY_OFFSET] != ' ') {
         return false; 
     }
 
     // If the command is a PUT, get the size of the value in bytes and then memcpy it. 
     int num_size = 0; 
     if (is_put) {
-        const int value_offset = key_offset + num_read; 
+        const int VALUE_OFFSET = KEY_OFFSET + num_read; 
         while (num_size < MAX_STRING_LENGTH) {
-            int value_idx = num_size + value_offset; 
-            if (client_req[value_idx] == '\0') {
+            int value_idx = num_size + VALUE_OFFSET; 
+            if (client_req[value_idx] == '\0' || client_req[value_idx] == '\n') {
                 break; 
             }
             num_size++; 
         }
-        if (num_size > MAX_STRING_LENGTH) {
+        if (num_size == MAX_STRING_LENGTH && (client_req[num_size + VALUE_OFFSET] != '\0' 
+            || client_req[num_size + VALUE_OFFSET] != '\n')) {
             return false; 
         }
-        memcpy(value, (void*)client_req[value_offset], num_size);  
+        memcpy(value, (void*)client_req[VALUE_OFFSET], num_size);  
     }
     Result* get_result; 
     bool op_success = run_op(cmd, key, value, num_size, database, get_result); 
@@ -147,12 +152,11 @@ void* thread_func(void* thread_args) {
     
     // Used for parsing client requests
     char client_buf[MAX_MSG_BYTES]; 
-    char client_req[MAX_MSG_BYTES];
     int num_bytes_read = 0; 
     int bytes_received;
 
     // Keep reading until we reach the end of the request, or the request is too large, or the client closes the socket.  
-    while (bytes_received = recv(client_fd, (void*)client_buf, MAX_MSG_BYTES, 0)) {
+    while (bytes_received = recv(client_fd, (void*)client_buf + num_bytes_read, MAX_MSG_BYTES - num_bytes_read, 0)) {
         if (bytes_received == 0) {
             printf("Client closed socket.\n"); 
             return; 
@@ -162,38 +166,34 @@ void* thread_func(void* thread_args) {
             close(client_fd); 
             return;  
         }
-        memcpy((void*)client_req[bytes_received], client_buf, bytes_received); 
         if (client_buf[bytes_received] == '\0' || client_buf[bytes_received] == '\n') {
             break; 
         }
+        num_bytes_read =+ bytes_received; 
     }
 
-    request_handler(client_req, database, client_fd); 
+    request_handler(client_buf, database, client_fd); 
     
     return NULL; 
 }
 
-int main(int argc, char *argv[])
-{
+int main(int argc, char *argv[]) {
     KVDataBase* database = (KVDataBase*)malloc(sizeof(KVDataBase)); 
 
     // Socket code:
     // check if a port is supplied, otherwise use a random available port (through port 0)
     int port = 0;
-    if (argc == 2)
-    {
+    if (argc == 2) {
         port = (int)argv[1];
     }
     // Create a socket
     int socket_fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (socket_fd == -1)
-    {
+    if (socket_fd == -1) {
         printf("ERROR: Issue creating socket.\n");
     }
     // Upon successful creation, bind the socket to an address
     struct sockaddr_in address;
-    if (bind(socket_fd, (sockaddr *)&address, sizeof(address)) == -1)
-    {
+    if (bind(socket_fd, (sockaddr *)&address, sizeof(address)) == -1) {
         printf("ERROR: Issue binding socket.\n");
     }
     // Now mark the socket as listenable so it can receive requests from clients
