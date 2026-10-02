@@ -26,9 +26,9 @@ struct ThreadArgs {
 bool run_op(char operation[CMD_LENGTH], char key[MAX_STRING_LENGTH], void* value, int size, KVDataBase* database, 
     Result*& get_result) 
     {
-    printf("Operation = %s\n", operation); 
-    printf("Key = %s\n", key); 
-    printf("Size = %d\n", size); 
+    // printf("Operation = %s\n", operation); 
+    // printf("Key = %s\n", key); 
+    // printf("Size = %d\n", size); 
     if (strcmp(operation, "PUT\0") == 0) {
         printf("Reached here\n"); 
         int success = database->put(key, value, size); 
@@ -37,6 +37,7 @@ bool run_op(char operation[CMD_LENGTH], char key[MAX_STRING_LENGTH], void* value
     }
     else if (strcmp(operation, "GET\0") == 0) {
         *get_result = database->get(key); 
+        printf("Result size = %d\n", get_result->size); 
         if (get_result->size == FAILURE) return false; 
         return true; 
     }
@@ -110,8 +111,9 @@ void request_handler(char client_req[MAX_MSG_BYTES], KVDataBase* database, int c
     
     // Parse over the key until we reach the end of it, and then memcpy it if it's valid. 
     while (num_read < MAX_STRING_LENGTH) {
-        // Space meaning that there is no more of the key to read. 
-        if (client_req[num_read + KEY_OFFSET ] == ' ') {
+        // Space for PUT or null terminator/newline for GET meaning that there is no more of the key to read. 
+        if (client_req[num_read + KEY_OFFSET ] == ' ' || client_req[num_read + KEY_OFFSET] == '\0' || 
+            client_req[num_read + KEY_OFFSET] == '\n') {
             break; 
         }
         num_read++;  
@@ -148,18 +150,18 @@ void request_handler(char client_req[MAX_MSG_BYTES], KVDataBase* database, int c
         value = malloc(sizeof(char) * num_size); 
         memcpy(value, (void*)&client_req[VALUE_OFFSET], num_size);  
     }
-    printf("Value = %c\n", *((char*)value)); 
-    Result* get_result = (Result*)malloc(sizeof(get_result)); 
+    // printf("Value = %c\n", *((char*)value)); 
+    Result* get_result = (Result*)malloc(sizeof(Result)); 
     bool op_success = run_op(cmd, key, value, num_size, database, get_result); 
     printf("Op success = %d\n", op_success); 
 
     // // Now communicate with the client
     // client_response(client_fd, cmd, value, num_size, op_success);  
 
-    // free(get_result); 
-    // if (is_put) {
-    //     free(value); 
-    // }
+    free(get_result); 
+    if (is_put) {
+        free(value); 
+    }
 }
 
 // Supported format type: GET <string> or PUT <string> <arbitrary value><\0 or \n>
