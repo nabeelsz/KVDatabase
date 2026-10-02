@@ -27,7 +27,7 @@ NodePool::NodePool() {
 }
 
 // Get a node from the node pool with relevant metadata for it to be inserted. 
-HashEntry* NodePool::get_node(char* key, void* bytes, uint64_t size) {
+HashEntry* NodePool::get_node(char* key, void* bytes, int size) {
     HashEntry* returned_node = curr_available; 
     strcpy(returned_node->key, key);
     memcpy(returned_node->data, bytes, size); 
@@ -72,7 +72,7 @@ HashMap::~HashMap() {
     assert(num_entries == 0); 
 }
 
-int HashMap::insert(char* key, void* bytes, uint64_t size) {
+int HashMap::insert(char* key, void* bytes, int size) {
     if (num_entries == MAX_ENTRIES) {
         return ErrCodes::FAILURE; 
     } 

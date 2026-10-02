@@ -1,6 +1,6 @@
 #include <database.h> 
 
-int KVDataBase::put(char* key, void* bytes, uint64_t size) {
+int KVDataBase::put(char* key, void* bytes, int size) {
     pthread_mutex_lock(&kv_lock); 
     int err_code = kv_map.insert(key, bytes, size); 
     pthread_mutex_unlock(&kv_lock); 

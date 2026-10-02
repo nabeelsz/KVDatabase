@@ -7,7 +7,6 @@
 #include <netinet/in.h>
 #include <unistd.h> 
 
-#include "hashmap.h"
 #include "database.h"
 
 // Max CMD length (PUT or GET)
@@ -24,7 +23,7 @@ struct ThreadArgs {
 }; 
 
 
-bool run_op(char operation[CMD_LENGTH], char key[MAX_STRING_LENGTH], void* value, uint64_t size, KVDataBase* database, 
+bool run_op(char operation[CMD_LENGTH], char key[MAX_STRING_LENGTH], void* value, int size, KVDataBase* database, 
     Result*& get_result) 
     {
     if (strcmp(operation, "PUT") == 0) {
@@ -32,16 +31,15 @@ bool run_op(char operation[CMD_LENGTH], char key[MAX_STRING_LENGTH], void* value
         if (success == FAILURE) return false; 
     }
     else if (strcmp(operation, "GET") == 0) {
-        Result value = database->get(key); 
-        if (value.size == FAILURE) return false; 
-        *get_result = value; 
+        *get_result = database->get(key); 
+        if (get_result->size == FAILURE) return false; 
     }
 
     // Return true if no failures above ran
     return true; 
 }
 
-void client_response(int client_fd, char cmd[CMD_LENGTH], void* value, uint64_t size, bool success) {
+void client_response(int client_fd, char cmd[CMD_LENGTH], void* value, int size, bool success) {
     const char* response; 
     if (success) {
         response = "Success!\n"; 
@@ -50,11 +48,11 @@ void client_response(int client_fd, char cmd[CMD_LENGTH], void* value, uint64_t 
         response = "Failure, error encountered\n"; 
     }
     int total_sent = 0; 
-    int num_bytes = strlen(response); 
+    size_t num_bytes = strlen(response); 
 
     // Send over the response to the client, incrementing the pointer based on the number of bytes we have sent, ensuring onl
     // the bytes we haven't sent are sent over. 
-    while (total_sent < num_bytes) {
+    while ((size_t)total_sent < num_bytes) {
         int bytes_sent = send(client_fd, (void*)response + total_sent, num_bytes - total_sent, MSG_NOSIGNAL); 
         if (bytes_sent == -1) {
             printf("ERROR: Client closed socket.\n"); 
@@ -81,7 +79,7 @@ void client_response(int client_fd, char cmd[CMD_LENGTH], void* value, uint64_t 
 
 // Handles the request by firstly parsing it, and then running it on the database, returning true if the request was successfully
 // ran or false if the request was malformed or if the request was not successfully ran in the database. 
-bool request_handler(char client_req[MAX_MSG_BYTES], KVDataBase* database, int client_fd) {
+void request_handler(char client_req[MAX_MSG_BYTES], KVDataBase* database, int client_fd) {
     char cmd[CMD_LENGTH]; 
     char key[MAX_STRING_LENGTH + NULL_TERMINATOR_SIZE]; 
     void* value; 
@@ -91,11 +89,11 @@ bool request_handler(char client_req[MAX_MSG_BYTES], KVDataBase* database, int c
     bool is_put = strcmp(cmd, "PUT") == 0; 
     if (!is_put && strcmp(cmd, "GET") != 0) {
         printf("ERROR: Operation is not a PUT or GET\n"); 
-        return false; 
+        return;
     }
     // Need a space between CMD and Key. 
     if (client_req[3] != ' ') {
-        return false; 
+        return; 
     }
 
     // Parse over the key.
@@ -114,7 +112,7 @@ bool request_handler(char client_req[MAX_MSG_BYTES], KVDataBase* database, int c
 
     // If we've reached the end of the maximum length of the key and there's still more then mark it as invalid. 
     if (num_read == MAX_STRING_LENGTH && client_req[num_read + KEY_OFFSET] != ' ') {
-        return false; 
+        return;
     }
 
     // If the command is a PUT, get the size of the value in bytes and then memcpy it. 
@@ -130,15 +128,16 @@ bool request_handler(char client_req[MAX_MSG_BYTES], KVDataBase* database, int c
         }
         if (num_size == MAX_STRING_LENGTH && (client_req[num_size + VALUE_OFFSET] != '\0' 
             || client_req[num_size + VALUE_OFFSET] != '\n')) {
-            return false; 
+            return;
         }
         memcpy(value, (void*)client_req[VALUE_OFFSET], num_size);  
     }
-    Result* get_result; 
+    Result* get_result = (Result*)malloc(sizeof(get_result)); 
     bool op_success = run_op(cmd, key, value, num_size, database, get_result); 
 
     // Now communicate with the client
     client_response(client_fd, cmd, value, num_size, op_success);  
+    free(get_result); 
 }
 
 // Supported format type: GET <string> or PUT <string> <arbitrary value><\0 or \n>

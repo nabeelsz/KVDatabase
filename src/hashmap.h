@@ -18,7 +18,7 @@ enum ErrCodes {
 struct HashEntry {
     char* key; 
     void* data;
-    uint64_t size; 
+    int size; 
     HashEntry* next; 
 }; 
 
@@ -33,7 +33,7 @@ struct NodePool {
     NodePool(); 
 
     // Get a node from the node pool with relevant metadata for it to be inserted. 
-    HashEntry* get_node(char* key, void* bytes, uint64_t size); 
+    HashEntry* get_node(char* key, void* bytes, int size); 
     
     // Linked list for available nodes 
     HashEntry* curr_available; 
