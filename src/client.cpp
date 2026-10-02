@@ -128,11 +128,15 @@ void request_handler(char client_req[MAX_MSG_BYTES], KVDataBase* database, int c
     // If the command is a PUT, get the size of the value in bytes and then memcpy it. 
     int num_size = 0; 
     if (is_put) {
-        const int VALUE_OFFSET = KEY_OFFSET + num_read; 
+        // Begin at the first byte of the value.
+        const int VALUE_OFFSET = KEY_OFFSET + num_read + 1; 
         while (num_size < MAX_STRING_LENGTH) {
             int value_idx = num_size + VALUE_OFFSET; 
             if (client_req[value_idx] == '\0' || client_req[value_idx] == '\n') {
-                num_size++; 
+                // Include null terminator in the data being stored. 
+                if (client_req[value_idx] == '\0') {
+                    num_size++; 
+                }
                 break; 
             }
             num_size++; 
@@ -144,7 +148,7 @@ void request_handler(char client_req[MAX_MSG_BYTES], KVDataBase* database, int c
         value = malloc(sizeof(char) * num_size); 
         memcpy(value, (void*)&client_req[VALUE_OFFSET], num_size);  
     }
-    printf("Value = %c\n", (char*)value); 
+    printf("Value = %c\n", *((char*)value)); 
     Result* get_result = (Result*)malloc(sizeof(get_result)); 
     bool op_success = run_op(cmd, key, value, num_size, database, get_result); 
     printf("Op success = %d\n", op_success); 
