@@ -48,12 +48,13 @@ void client_response(int client_fd, char cmd[CMD_LENGTH], void* value, int size,
         response = "Failure, error encountered\n"; 
     }
     int total_sent = 0; 
-    size_t num_bytes = strlen(response); 
+    int num_bytes = strlen(response); 
+
 
     // Send over the response to the client, incrementing the pointer based on the number of bytes we have sent, ensuring onl
     // the bytes we haven't sent are sent over. 
-    while ((size_t)total_sent < num_bytes) {
-        int bytes_sent = send(client_fd, (void*)response + total_sent, num_bytes - total_sent, MSG_NOSIGNAL); 
+    while (total_sent < num_bytes) {
+        int bytes_sent = send(client_fd, (void*)(response + total_sent), num_bytes - total_sent, MSG_NOSIGNAL); 
         if (bytes_sent == -1) {
             printf("ERROR: Client closed socket.\n"); 
             return; 
@@ -105,6 +106,7 @@ void request_handler(char client_req[MAX_MSG_BYTES], KVDataBase* database, int c
         // Space meaning that there is no more of the key to read. 
         if (client_req[num_read + KEY_OFFSET ] == ' ') {
             key[key_idx++] = '\0'; 
+            break; 
         }
         key[key_idx++] = client_req[num_read + KEY_OFFSET];
         num_read++;  
@@ -130,14 +132,19 @@ void request_handler(char client_req[MAX_MSG_BYTES], KVDataBase* database, int c
             || client_req[num_size + VALUE_OFFSET] != '\n')) {
             return;
         }
-        memcpy(value, (void*)client_req[VALUE_OFFSET], num_size);  
+        value = malloc(sizeof(char) * num_size); 
+        memcpy(value, (void*)&client_req[VALUE_OFFSET], num_size);  
     }
     Result* get_result = (Result*)malloc(sizeof(get_result)); 
     bool op_success = run_op(cmd, key, value, num_size, database, get_result); 
 
     // Now communicate with the client
     client_response(client_fd, cmd, value, num_size, op_success);  
+
     free(get_result); 
+    if (is_put) {
+        free(value); 
+    }
 }
 
 // Supported format type: GET <string> or PUT <string> <arbitrary value><\0 or \n>
@@ -155,15 +162,19 @@ void* thread_func(void* thread_args) {
     int bytes_received;
 
     // Keep reading until we reach the end of the request, or the request is too large, or the client closes the socket.  
-    while (bytes_received = recv(client_fd, (void*)client_buf + num_bytes_read, MAX_MSG_BYTES - num_bytes_read, 0)) {
+    while ((bytes_received = recv(client_fd, (void*)(client_buf + num_bytes_read), MAX_MSG_BYTES - num_bytes_read, 0)) >= -1) {
         if (bytes_received == 0) {
             printf("Client closed socket.\n"); 
-            return; 
+            return NULL; 
+        }
+        else if (bytes_received == -1) {
+            printf("Error occurred regarding socket.\n");
+            return NULL; 
         }
         if (num_bytes_read + bytes_received > MAX_MSG_BYTES) { 
             printf("Invalid message: too large.\n"); 
             close(client_fd); 
-            return;  
+            return NULL;  
         }
         if (client_buf[bytes_received] == '\0' || client_buf[bytes_received] == '\n') {
             break; 
@@ -183,7 +194,7 @@ int main(int argc, char *argv[]) {
     // check if a port is supplied, otherwise use a random available port (through port 0)
     int port = 0;
     if (argc == 2) {
-        port = (int)argv[1];
+        port = atoi(argv[1]);
     }
     // Create a socket
     int socket_fd = socket(AF_INET, SOCK_STREAM, 0);
@@ -191,7 +202,10 @@ int main(int argc, char *argv[]) {
         printf("ERROR: Issue creating socket.\n");
     }
     // Upon successful creation, bind the socket to an address
-    struct sockaddr_in address;
+    struct sockaddr_in address = {0}; 
+    address.sin_family = AF_INET; 
+    address.sin_port = htons(port); 
+    address.sin_addr.s_addr = INADDR_ANY; 
     if (bind(socket_fd, (sockaddr *)&address, sizeof(address)) == -1) {
         printf("ERROR: Issue binding socket.\n");
     }
@@ -208,7 +222,8 @@ int main(int argc, char *argv[]) {
         }
         // TODO: create a function that interacts with the client (handles request) and spawn a thread for it.
         ThreadArgs args = {connected_fd, database}; 
-        if (pthread_create(nullptr, nullptr, &thread_func, (void*)&args) == -1) {
+        pthread_t placeholder; 
+        if (pthread_create(&placeholder, nullptr, &thread_func, (void*)&args) != 0) {
             printf("ERROR: Error with creating thread.\n");
         }
     }
