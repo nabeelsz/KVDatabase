@@ -26,6 +26,9 @@ struct ThreadArgs {
 bool run_op(char operation[CMD_LENGTH], char key[MAX_STRING_LENGTH], void* value, int size, KVDataBase* database, 
     Result*& get_result) 
     {
+    printf("Operation = %s\n", operation); 
+    printf("Key = %s\n", key); 
+    printf("Size = %d\n", size); 
     if (strcmp(operation, "PUT\0") == 0) {
         printf("Reached here\n"); 
         int success = database->put(key, value, size); 
@@ -85,7 +88,6 @@ void client_response(int client_fd, char cmd[CMD_LENGTH], void* value, int size,
 // ran or false if the request was malformed or if the request was not successfully ran in the database. 
 void request_handler(char client_req[MAX_MSG_BYTES], KVDataBase* database, int client_fd) {
     char cmd[CMD_LENGTH + 1]; 
-    char key[MAX_STRING_LENGTH + NULL_TERMINATOR_SIZE]; 
     void* value; 
 
     // Copy over the command + add a null terminator and verify it's valid. 
@@ -104,22 +106,24 @@ void request_handler(char client_req[MAX_MSG_BYTES], KVDataBase* database, int c
     // For parsing over the key.
     int num_read = 0; 
     int key_idx = 0; 
-    const int KEY_OFFSET = 3; 
+    const int KEY_OFFSET = 4; 
     
+    // Parse over the key until we reach the end of it, and then memcpy it if it's valid. 
     while (num_read < MAX_STRING_LENGTH) {
         // Space meaning that there is no more of the key to read. 
         if (client_req[num_read + KEY_OFFSET ] == ' ') {
-            key[key_idx++] = '\0'; 
             break; 
         }
-        key[key_idx++] = client_req[num_read + KEY_OFFSET];
         num_read++;  
     }
-
     // If we've reached the end of the maximum length of the key and there's still more then mark it as invalid. 
     if (num_read == MAX_STRING_LENGTH && client_req[num_read + KEY_OFFSET] != ' ') {
         return;
     }
+    printf("Num read = %d\n", num_read); 
+    char key[num_read + NULL_TERMINATOR_SIZE]; 
+    memcpy(key, (void*)(client_req + KEY_OFFSET), num_read); 
+    key[num_read + NULL_TERMINATOR_SIZE - 1] = '\0'; 
 
     // If the command is a PUT, get the size of the value in bytes and then memcpy it. 
     int num_size = 0; 
@@ -140,6 +144,7 @@ void request_handler(char client_req[MAX_MSG_BYTES], KVDataBase* database, int c
         value = malloc(sizeof(char) * num_size); 
         memcpy(value, (void*)&client_req[VALUE_OFFSET], num_size);  
     }
+    printf("Value = %c\n", (char*)value); 
     Result* get_result = (Result*)malloc(sizeof(get_result)); 
     bool op_success = run_op(cmd, key, value, num_size, database, get_result); 
     printf("Op success = %d\n", op_success); 
