@@ -26,17 +26,20 @@ struct ThreadArgs {
 bool run_op(char operation[CMD_LENGTH], char key[MAX_STRING_LENGTH], void* value, int size, KVDataBase* database, 
     Result*& get_result) 
     {
-    if (strcmp(operation, "PUT") == 0) {
+    if (strcmp(operation, "PUT\0") == 0) {
+        printf("Reached here\n"); 
         int success = database->put(key, value, size); 
-        if (success == FAILURE) return false; 
+        if (success == FAILURE) return false;
+        return true;  
     }
-    else if (strcmp(operation, "GET") == 0) {
+    else if (strcmp(operation, "GET\0") == 0) {
         *get_result = database->get(key); 
         if (get_result->size == FAILURE) return false; 
+        return true; 
     }
 
-    // Return true if no failures above ran
-    return true; 
+    // Return false, should be an unreachable path. 
+    return false; 
 }
 
 void client_response(int client_fd, char cmd[CMD_LENGTH], void* value, int size, bool success) {
@@ -63,7 +66,7 @@ void client_response(int client_fd, char cmd[CMD_LENGTH], void* value, int size,
     }
 
     // Send over GET value if op is a GET with the same methodology used in the response communication. 
-    if (strcmp(cmd, "GET") == 0) {
+    if (strcmp(cmd, "GET\0") == 0) {
         total_sent = 0; 
         while (total_sent < size) {
             int bytes_sent = send(client_fd, value + total_sent, size - total_sent, MSG_NOSIGNAL); 
@@ -81,14 +84,15 @@ void client_response(int client_fd, char cmd[CMD_LENGTH], void* value, int size,
 // Handles the request by firstly parsing it, and then running it on the database, returning true if the request was successfully
 // ran or false if the request was malformed or if the request was not successfully ran in the database. 
 void request_handler(char client_req[MAX_MSG_BYTES], KVDataBase* database, int client_fd) {
-    char cmd[CMD_LENGTH]; 
+    char cmd[CMD_LENGTH + 1]; 
     char key[MAX_STRING_LENGTH + NULL_TERMINATOR_SIZE]; 
     void* value; 
 
-    // First copy over first 3 bytes.
+    // Copy over the command + add a null terminator and verify it's valid. 
     memcpy(cmd, client_req, CMD_LENGTH); 
-    bool is_put = strcmp(cmd, "PUT") == 0; 
-    if (!is_put && strcmp(cmd, "GET") != 0) {
+    cmd[CMD_LENGTH] = '\0'; 
+    bool is_put = strcmp(cmd, "PUT\0") == 0; 
+    if (!is_put && strcmp(cmd, "GET\0") != 0) {
         printf("ERROR: Operation is not a PUT or GET\n"); 
         return;
     }
@@ -97,7 +101,7 @@ void request_handler(char client_req[MAX_MSG_BYTES], KVDataBase* database, int c
         return; 
     }
 
-    // Parse over the key.
+    // For parsing over the key.
     int num_read = 0; 
     int key_idx = 0; 
     const int KEY_OFFSET = 3; 
@@ -124,6 +128,7 @@ void request_handler(char client_req[MAX_MSG_BYTES], KVDataBase* database, int c
         while (num_size < MAX_STRING_LENGTH) {
             int value_idx = num_size + VALUE_OFFSET; 
             if (client_req[value_idx] == '\0' || client_req[value_idx] == '\n') {
+                num_size++; 
                 break; 
             }
             num_size++; 
@@ -137,14 +142,15 @@ void request_handler(char client_req[MAX_MSG_BYTES], KVDataBase* database, int c
     }
     Result* get_result = (Result*)malloc(sizeof(get_result)); 
     bool op_success = run_op(cmd, key, value, num_size, database, get_result); 
+    printf("Op success = %d\n", op_success); 
 
-    // Now communicate with the client
-    client_response(client_fd, cmd, value, num_size, op_success);  
+    // // Now communicate with the client
+    // client_response(client_fd, cmd, value, num_size, op_success);  
 
-    free(get_result); 
-    if (is_put) {
-        free(value); 
-    }
+    // free(get_result); 
+    // if (is_put) {
+    //     free(value); 
+    // }
 }
 
 // Supported format type: GET <string> or PUT <string> <arbitrary value><\0 or \n>
@@ -187,44 +193,45 @@ void* thread_func(void* thread_args) {
     return NULL; 
 }
 
-int main(int argc, char *argv[]) {
-    KVDataBase* database = (KVDataBase*)malloc(sizeof(KVDataBase)); 
+// int main(int argc, char *argv[]) {
+//     KVDataBase* database = (KVDataBase*)malloc(sizeof(KVDataBase)); 
 
-    // Socket code:
-    // check if a port is supplied, otherwise use a random available port (through port 0)
-    int port = 0;
-    if (argc == 2) {
-        port = atoi(argv[1]);
-    }
-    // Create a socket
-    int socket_fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (socket_fd == -1) {
-        printf("ERROR: Issue creating socket.\n");
-    }
-    // Upon successful creation, bind the socket to an address
-    struct sockaddr_in address = {0}; 
-    address.sin_family = AF_INET; 
-    address.sin_port = htons(port); 
-    address.sin_addr.s_addr = INADDR_ANY; 
-    if (bind(socket_fd, (sockaddr *)&address, sizeof(address)) == -1) {
-        printf("ERROR: Issue binding socket.\n");
-    }
-    // Now mark the socket as listenable so it can receive requests from clients
-    int max_connections = 128;
-    listen(socket_fd, max_connections);
-    // Now accept incoming requests from clients
-    while (true)
-    {
-        int connected_fd = accept(socket_fd, (sockaddr *)&address, (socklen_t *)sizeof(address));
-        if (connected_fd == -1)
-        {
-            printf("ERROR: Issue retrieving connection file descriptor from accept\n");
-        }
-        // TODO: create a function that interacts with the client (handles request) and spawn a thread for it.
-        ThreadArgs args = {connected_fd, database}; 
-        pthread_t placeholder; 
-        if (pthread_create(&placeholder, nullptr, &thread_func, (void*)&args) != 0) {
-            printf("ERROR: Error with creating thread.\n");
-        }
-    }
-}
+//     // Socket code:
+//     // check if a port is supplied, otherwise use a random available port (through port 0)
+//     int port = 0;
+//     if (argc == 2) {
+//         port = atoi(argv[1]);
+//     }
+//     // Create a socket
+//     int socket_fd = socket(AF_INET, SOCK_STREAM, 0);
+//     if (socket_fd == -1) {
+//         printf("ERROR: Issue creating socket.\n");
+//     }
+//     // Upon successful creation, bind the socket to an address
+//     struct sockaddr_in address = {0}; 
+//     address.sin_family = AF_INET; 
+//     address.sin_port = htons(port); 
+//     address.sin_addr.s_addr = INADDR_ANY; 
+//     if (bind(socket_fd, (sockaddr *)&address, sizeof(address)) == -1) {
+//         printf("ERROR: Issue binding socket.\n");
+//     }
+//     // Now mark the socket as listenable so it can receive requests from clients
+//     int max_connections = 128;
+//     listen(socket_fd, max_connections);
+//     // Now accept incoming requests from clients
+//     while (true)
+//     {
+//         socklen_t addr_size = sizeof(address); 
+//         int connected_fd = accept(socket_fd, (sockaddr *)&address, &addr_size);
+//         if (connected_fd == -1)
+//         {
+//             printf("ERROR: Issue retrieving connection file descriptor from accept\n");
+//         }
+//         // TODO: create a function that interacts with the client (handles request) and spawn a thread for it.
+//         ThreadArgs args = {connected_fd, database}; 
+//         pthread_t placeholder; 
+//         if (pthread_create(&placeholder, nullptr, &thread_func, (void*)&args) != 0) {
+//             printf("ERROR: Error with creating thread.\n");
+//         }
+//     }
+// }

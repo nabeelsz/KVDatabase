@@ -86,6 +86,9 @@ int HashMap::insert(char* key, void* bytes, int size) {
     }
     int hash = hash_func(key);
     HashEntry* new_entry = pool.get_node(key, bytes, size); 
+    assert(new_entry->size == size); 
+    printf("New entry size = %d\n", new_entry->size); 
+    assert(strcmp(new_entry->key, key) == 0); 
     // Next pointer is populated due to node pool so set it to nullptr
     // TODO: maybe instead of having the node pool be a linked 
     // list, it can instead be an array of allocated pointers to avoid having to do this. 
