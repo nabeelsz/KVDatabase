@@ -21,7 +21,7 @@ void req_handler_tests() {
     char req3[] = "PUT 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef 1\n";
     request_handler(req3, &test_db, -1); 
     Result result_3 = test_db.get("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
-    assert(result_1.size == 1); 
+    assert(result_3.size == 1); 
     char* res3_val = (char*)result_3.data; 
     assert(strcmp(res3_val, "1\0") == 0);
 
