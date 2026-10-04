@@ -26,11 +26,7 @@ struct ThreadArgs {
 bool run_op(char operation[CMD_LENGTH], char key[MAX_STRING_LENGTH], void* value, int size, KVDataBase* database, 
     Result*& get_result) 
     {
-    // printf("Operation = %s\n", operation); 
-    // printf("Key = %s\n", key); 
-    // printf("Size = %d\n", size); 
     if (strcmp(operation, "PUT\0") == 0) {
-        printf("Reached here\n"); 
         int success = database->put(key, value, size); 
         if (success == FAILURE) return false;
         return true;  
@@ -150,7 +146,6 @@ void request_handler(char client_req[MAX_MSG_BYTES], KVDataBase* database, int c
         value = malloc(sizeof(char) * num_size); 
         memcpy(value, (void*)&client_req[VALUE_OFFSET], num_size);  
     }
-    // printf("Value = %c\n", *((char*)value)); 
     Result* get_result = (Result*)malloc(sizeof(Result)); 
     bool op_success = run_op(cmd, key, value, num_size, database, get_result); 
     printf("Op success = %d\n", op_success); 
@@ -238,7 +233,6 @@ void* thread_func(void* thread_args) {
 //         {
 //             printf("ERROR: Issue retrieving connection file descriptor from accept\n");
 //         }
-//         // TODO: create a function that interacts with the client (handles request) and spawn a thread for it.
 //         ThreadArgs args = {connected_fd, database}; 
 //         pthread_t placeholder; 
 //         if (pthread_create(&placeholder, nullptr, &thread_func, (void*)&args) != 0) {

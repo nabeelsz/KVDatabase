@@ -74,6 +74,9 @@ HashMap::~HashMap() {
 }
 
 int HashMap::insert(char* key, void* bytes, int size) {
+    printf("Key = %s\n", key); 
+    printf("Size of data = %d\n", size); 
+
     if (num_entries == MAX_ENTRIES) {
         printf("ERROR: Maximum entries.\n"); 
         return ErrCodes::FAILURE; 
@@ -113,6 +116,8 @@ int HashMap::insert(char* key, void* bytes, int size) {
 Result HashMap::get(char* key) {
     int hash = hash_func(key); 
     HashEntry* current_node = map[hash]; 
+    printf("Hash for key %s is %d\n", key, hash);
+    printf("Current node key = %s\n", current_node->key); 
     while (current_node) {
         if (strcmp(key, current_node->key) == 0) break; 
         current_node = current_node->next; 
