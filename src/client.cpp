@@ -23,7 +23,7 @@ struct ThreadArgs {
 }; 
 
 
-bool run_op(char operation[CMD_LENGTH], char key[MAX_STRING_LENGTH], void* value, int size, KVDataBase* database, 
+bool run_op(char operation[CMD_LENGTH + NULL_TERMINATOR_SIZE], char key[MAX_STRING_LENGTH + NULL_TERMINATOR_SIZE], void* value, int size, KVDataBase* database, 
     Result*& get_result) 
     {
     if (strcmp(operation, "PUT\0") == 0) {
@@ -39,10 +39,11 @@ bool run_op(char operation[CMD_LENGTH], char key[MAX_STRING_LENGTH], void* value
     }
 
     // Return false, should be an unreachable path. 
+    printf("ERROR: Reached an unreachable path, neither a PUT or a GET was completed.\n"); 
     return false; 
 }
 
-void client_response(int client_fd, char cmd[CMD_LENGTH], void* value, int size, bool success) {
+void client_response(int client_fd, char cmd[CMD_LENGTH + NULL_TERMINATOR_SIZE], void* value, int size, bool success) {
     const char* response; 
     if (success) {
         response = "Success!\n"; 
@@ -84,7 +85,7 @@ void client_response(int client_fd, char cmd[CMD_LENGTH], void* value, int size,
 // Handles the request by firstly parsing it, and then running it on the database, returning true if the request was successfully
 // ran or false if the request was malformed or if the request was not successfully ran in the database. 
 void request_handler(char client_req[MAX_MSG_BYTES], KVDataBase* database, int client_fd) {
-    char cmd[CMD_LENGTH + 1]; 
+    char cmd[CMD_LENGTH + NULL_TERMINATOR_SIZE]; 
     void* value; 
 
     // Copy over the command + add a null terminator and verify it's valid. 
@@ -97,8 +98,11 @@ void request_handler(char client_req[MAX_MSG_BYTES], KVDataBase* database, int c
     }
     // Need a space between CMD and Key. 
     if (client_req[3] != ' ') {
+        printf("ERROR: No space inbetween the key and the command\n"); 
         return; 
     }
+    printf("Database command is %s\n", cmd); 
+    
 
     // For parsing over the key.
     int num_read = 0; 
@@ -116,6 +120,7 @@ void request_handler(char client_req[MAX_MSG_BYTES], KVDataBase* database, int c
     }
     // If we've reached the end of the maximum length of the key and there's still more then mark it as invalid. 
     if (num_read == MAX_STRING_LENGTH && client_req[num_read + KEY_OFFSET] != ' ') {
+        printf("ERROR: Key is too larger than the supported maximum key size.\n"); 
         return;
     }
     printf("Num read = %d\n", num_read); 
@@ -139,9 +144,12 @@ void request_handler(char client_req[MAX_MSG_BYTES], KVDataBase* database, int c
             }
             num_size++; 
         }
+
         if (num_size == MAX_STRING_LENGTH && (client_req[num_size + VALUE_OFFSET] != '\0' 
-            || client_req[num_size + VALUE_OFFSET] != '\n')) {
-            return;
+            && client_req[num_size + VALUE_OFFSET] != '\n')) {
+                printf("ERROR: Value is larger than the maximum supported value size. The size of value is %d\n", num_size);
+                printf("Value at 256th byte is %c\n", client_req[num_size + VALUE_OFFSET]);
+                return;
         }
         value = malloc(sizeof(char) * num_size); 
         memcpy(value, (void*)&client_req[VALUE_OFFSET], num_size);  
