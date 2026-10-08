@@ -15,7 +15,7 @@ NodePool::NodePool() {
         curr->key = (char*)malloc(sizeof(char) * MAX_STRING_LENGTH + 1); 
         // allocating an arbitrary number of bytes, TODO: decide maximum number of bytes we want to support, also is there a way
         // to avoid fragmentation? since some values may be ints which take up less bytes. Need to investigate.
-        curr->data = malloc(sizeof(char) * MAX_STRING_LENGTH); 
+        curr->data = malloc(sizeof(char) * MAX_STRING_LENGTH + 1); 
         curr->size = 0; 
         curr->next = nullptr; 
         // If first allocation then modify head variable to point to the first allocated
@@ -91,6 +91,7 @@ int HashMap::insert(char* key, void* bytes, int size) {
     HashEntry* new_entry = pool.get_node(key, bytes, size); 
     assert(new_entry->size == size); 
     printf("New entry size = %d\n", new_entry->size); 
+    printf("New entry hash for key %s is %d\n", key, hash); 
     assert(strcmp(new_entry->key, key) == 0); 
     // Next pointer is populated due to node pool so set it to nullptr
     // TODO: maybe instead of having the node pool be a linked 

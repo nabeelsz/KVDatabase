@@ -12,9 +12,10 @@
 // Max CMD length (PUT or GET)
 const int CMD_LENGTH = 3; 
 const int NULL_TERMINATOR_SIZE = 1; 
-// Maximum total message bytes = length of command + largest possible length of key + largest possible length of value + null 
-// terminator byte. 
-const int MAX_MSG_BYTES = CMD_LENGTH + MAX_STRING_LENGTH * 2 + NULL_TERMINATOR_SIZE;  
+const int SPACE_OFFSET = 1; 
+// Maximum total message bytes = length of command + space inbetween 
+// +  largest possible length of key + space inbetween + largest possible length of value + null terminator byte. 
+const int MAX_MSG_BYTES = CMD_LENGTH + MAX_STRING_LENGTH * 2 + NULL_TERMINATOR_SIZE + (2 * SPACE_OFFSET);  
 
 // struct to pass into pthread creation 
 struct ThreadArgs {
@@ -150,6 +151,11 @@ void request_handler(char client_req[MAX_MSG_BYTES], KVDataBase* database, int c
                 printf("ERROR: Value is larger than the maximum supported value size. The size of value is %d\n", num_size);
                 printf("Value at 256th byte is %c\n", client_req[num_size + VALUE_OFFSET]);
                 return;
+        }
+        // Include null terminator if we've reached the max string length, since we would've exited out of the loop without 
+        // reading it. 
+        if (num_size == MAX_STRING_LENGTH && (client_req[num_size + VALUE_OFFSET] == '\0')) {
+            num_size++; 
         }
         value = malloc(sizeof(char) * num_size); 
         memcpy(value, (void*)&client_req[VALUE_OFFSET], num_size);  
