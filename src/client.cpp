@@ -164,8 +164,8 @@ void request_handler(char client_req[MAX_MSG_BYTES], KVDataBase* database, int c
     bool op_success = run_op(cmd, key, value, num_size, database, get_result); 
     printf("Op success = %d\n", op_success); 
 
-    // // Now communicate with the client
-    // client_response(client_fd, cmd, value, num_size, op_success);  
+    // Now communicate with the client
+    client_response(client_fd, cmd, value, num_size, op_success);  
 
     free(get_result); 
     if (is_put) {
@@ -213,44 +213,45 @@ void* thread_func(void* thread_args) {
     return NULL; 
 }
 
-// int main(int argc, char *argv[]) {
-//     KVDataBase* database = (KVDataBase*)malloc(sizeof(KVDataBase)); 
+int main(int argc, char *argv[]) {
+    KVDataBase* database = (KVDataBase*)malloc(sizeof(KVDataBase)); 
 
-//     // Socket code:
-//     // check if a port is supplied, otherwise use a random available port (through port 0)
-//     int port = 0;
-//     if (argc == 2) {
-//         port = atoi(argv[1]);
-//     }
-//     // Create a socket
-//     int socket_fd = socket(AF_INET, SOCK_STREAM, 0);
-//     if (socket_fd == -1) {
-//         printf("ERROR: Issue creating socket.\n");
-//     }
-//     // Upon successful creation, bind the socket to an address
-//     struct sockaddr_in address = {0}; 
-//     address.sin_family = AF_INET; 
-//     address.sin_port = htons(port); 
-//     address.sin_addr.s_addr = INADDR_ANY; 
-//     if (bind(socket_fd, (sockaddr *)&address, sizeof(address)) == -1) {
-//         printf("ERROR: Issue binding socket.\n");
-//     }
-//     // Now mark the socket as listenable so it can receive requests from clients
-//     int max_connections = 128;
-//     listen(socket_fd, max_connections);
-//     // Now accept incoming requests from clients
-//     while (true)
-//     {
-//         socklen_t addr_size = sizeof(address); 
-//         int connected_fd = accept(socket_fd, (sockaddr *)&address, &addr_size);
-//         if (connected_fd == -1)
-//         {
-//             printf("ERROR: Issue retrieving connection file descriptor from accept\n");
-//         }
-//         ThreadArgs args = {connected_fd, database}; 
-//         pthread_t placeholder; 
-//         if (pthread_create(&placeholder, nullptr, &thread_func, (void*)&args) != 0) {
-//             printf("ERROR: Error with creating thread.\n");
-//         }
-//     }
-// }
+    // Socket code:
+    // check if a port is supplied, otherwise use a random available port (through port 0)
+    int port = 0;
+    if (argc == 2) {
+        port = atoi(argv[1]);
+    }
+    // Create a socket
+    int socket_fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (socket_fd == -1) {
+        printf("ERROR: Issue creating socket.\n");
+    }
+    // Upon successful creation, bind the socket to an address
+    struct sockaddr_in address = {0}; 
+    address.sin_family = AF_INET; 
+    address.sin_port = htons(port); 
+    address.sin_addr.s_addr = INADDR_ANY; 
+    if (bind(socket_fd, (sockaddr *)&address, sizeof(address)) == -1) {
+        printf("ERROR: Issue binding socket.\n");
+    }
+    // Now mark the socket as listenable so it can receive requests from clients
+    int max_connections = 128;
+    listen(socket_fd, max_connections);
+    // Now accept incoming requests from clients
+    while (true)
+    {
+        socklen_t addr_size = sizeof(address); 
+        int connected_fd = accept(socket_fd, (sockaddr *)&address, &addr_size);
+        if (connected_fd == -1)
+        {
+            printf("ERROR: Issue retrieving connection file descriptor from accept\n");
+        }
+        ThreadArgs* args = (ThreadArgs*)malloc(sizeof(ThreadArgs)); 
+        *args = ThreadArgs{connected_fd, database}; 
+        pthread_t placeholder; 
+        if (pthread_create(&placeholder, nullptr, &thread_func, (void*)args) != 0) {
+            printf("ERROR: Error with creating thread.\n");
+        }
+    }
+}
