@@ -1,4 +1,3 @@
-
 #include <cstdio>
 #include <cstdint> 
 #include <cstring>
@@ -21,7 +20,6 @@ struct ThreadArgs {
     int client_fd; 
     KVDataBase* database; 
 }; 
-
 
 bool run_op(char operation[CMD_LENGTH + NULL_TERMINATOR_SIZE], char key[MAX_STRING_LENGTH + NULL_TERMINATOR_SIZE], void* value, int size, 
     KVDataBase* database, Result& get_result) 
@@ -55,7 +53,6 @@ void client_response(int client_fd, char cmd[CMD_LENGTH + NULL_TERMINATOR_SIZE],
     }
     int total_sent = 0; 
     int num_bytes = strlen(response); 
-
 
     // Send over the response to the client, incrementing the pointer based on the number of bytes we have sent, ensuring onl
     // the bytes we haven't sent are sent over. 
@@ -101,24 +98,7 @@ bool cmd_parser(char client_req[MAX_MSG_BYTES], char** cmd) {
     return true; 
 }
 
-// Handles the request by firstly parsing it, and then running it on the database, returning true if the request was successfully
-// ran or false if the request was malformed or if the request was not successfully ran in the database. 
-void request_handler(char client_req[MAX_MSG_BYTES], KVDataBase* database, int client_fd) {
-    char cmd[CMD_LENGTH + NULL_TERMINATOR_SIZE]; 
-    char* ptr = cmd; 
-    void* value; 
-
-    if (!cmd_parser(client_req, &ptr)) {
-        return; 
-    } 
-    bool is_put = (strcmp(cmd, "PUT\0") == 0); 
-
-    // For parsing over the key.
-    int num_read = 0; 
-    int key_idx = 0; 
-    const int CMD_OFFSET = CMD_LENGTH + SPACE_OFFSET; 
-    
-    // Parse over the key until we reach the end of it, and then memcpy it if it's valid. 
+bool key_parser(char client_req[MAX_MSG_BYTES], int& num_read, const int CMD_OFFSET, bool is_put, bool is_get) {
     while (num_read < MAX_STRING_LENGTH) {
         // Space for PUT or null terminator/newline for GET meaning that there is no more of the key to read. 
         if (client_req[num_read + CMD_OFFSET ] == ' ' || client_req[num_read + CMD_OFFSET] == '\0' || 
@@ -128,60 +108,91 @@ void request_handler(char client_req[MAX_MSG_BYTES], KVDataBase* database, int c
         num_read++;  
     }
     // If we've reached the end of the maximum length of the key and there's still more for then mark it as invalid. 
-    if ((strcmp(cmd, "PUT") == 0) && (num_read == MAX_STRING_LENGTH && client_req[num_read + CMD_OFFSET] != ' ') || 
-        ((strcmp(cmd, "GET") == 0) && client_req[num_read + CMD_OFFSET] != '\0')) {
+    if ((is_put) && (num_read == MAX_STRING_LENGTH && client_req[num_read + CMD_OFFSET] != ' ') || 
+        ((is_get) && client_req[num_read + CMD_OFFSET] != '\0')) {
         printf("ERROR: Key is too larger than the supported maximum key size.\n"); 
-        return;
+        return false;
+    }
+    return true; 
+}
+
+bool value_parser(char client_req[MAX_MSG_BYTES], int& num_size, const int KEY_OFFSET, const int VALUE_OFFSET) {
+    // Begin at the first byte of the value.
+    while (num_size < MAX_STRING_LENGTH) {
+        int value_idx = num_size + VALUE_OFFSET; 
+        if (client_req[value_idx] == '\0' || client_req[value_idx] == '\n') {
+            // Include null terminator in the data being stored. 
+            if (client_req[value_idx] == '\0') {
+                num_size++; 
+            }
+            break; 
+        }
+        num_size++; 
+    }
+
+    if (num_size == MAX_STRING_LENGTH && (client_req[num_size + VALUE_OFFSET] != '\0' 
+        && client_req[num_size + VALUE_OFFSET] != '\n')) {
+            printf("ERROR: Value is larger than the maximum supported value size. The size of value is %d\n", num_size);
+            printf("Value at 256th byte is %c\n", client_req[num_size + VALUE_OFFSET]);
+            return false;
+    }
+    // Include null terminator if we've reached the max string length, since we would've exited out of the loop without 
+    // reading it. 
+    if (num_size == MAX_STRING_LENGTH && (client_req[num_size + VALUE_OFFSET] == '\0')) {
+        num_size++; 
+    }
+    
+    return true; 
+}
+
+// Handles the request by firstly parsing it, and then running it on the database, returning true if the request was successfully
+// ran or false if the request was malformed or if the request was not successfully ran in the database. 
+void request_handler(char client_req[MAX_MSG_BYTES], KVDataBase* database, int client_fd) {
+    char cmd[CMD_LENGTH + NULL_TERMINATOR_SIZE]; 
+    char* ptr = cmd; 
+
+    if (!cmd_parser(client_req, &ptr)) {
+        return; 
+    } 
+    bool is_put = (strcmp(cmd, "PUT\0") == 0); 
+    bool is_get = (strcmp(cmd, "GET\0") == 0); 
+
+    // Parse over the key and get its size, then memcpy the key part of the client's request into the key variable.  
+    int num_read = 0; 
+    const int CMD_OFFSET = CMD_LENGTH + SPACE_OFFSET; 
+    if (!key_parser(client_req, num_read, CMD_OFFSET, is_put, is_get)) {
+        return; 
     }
     printf("Num read = %d\n", num_read); 
     char key[num_read + NULL_TERMINATOR_SIZE]; 
     memcpy(key, (void*)(client_req + CMD_OFFSET), num_read); 
     key[num_read + NULL_TERMINATOR_SIZE - 1] = '\0'; 
-    printf("Command key is %s\n", key); 
 
-    // If the command is a PUT, get the size of the value in bytes and then memcpy it. 
+    // If PUT, then parse over the value. 
     int num_size = 0; 
     const int KEY_OFFSET = num_read + SPACE_OFFSET; 
+    // Begin at the first byte of the value.
+    const int VALUE_OFFSET = CMD_OFFSET + KEY_OFFSET; 
+
     if (is_put) {
-        // Begin at the first byte of the value.
-        const int VALUE_OFFSET = CMD_OFFSET + KEY_OFFSET; 
-        while (num_size < MAX_STRING_LENGTH) {
-            int value_idx = num_size + VALUE_OFFSET; 
-            if (client_req[value_idx] == '\0' || client_req[value_idx] == '\n') {
-                // Include null terminator in the data being stored. 
-                if (client_req[value_idx] == '\0') {
-                    num_size++; 
-                }
-                break; 
-            }
-            num_size++; 
-        }
-
-        if (num_size == MAX_STRING_LENGTH && (client_req[num_size + VALUE_OFFSET] != '\0' 
-            && client_req[num_size + VALUE_OFFSET] != '\n')) {
-                printf("ERROR: Value is larger than the maximum supported value size. The size of value is %d\n", num_size);
-                printf("Value at 256th byte is %c\n", client_req[num_size + VALUE_OFFSET]);
-                return;
-        }
-        // Include null terminator if we've reached the max string length, since we would've exited out of the loop without 
-        // reading it. 
-        if (num_size == MAX_STRING_LENGTH && (client_req[num_size + VALUE_OFFSET] == '\0')) {
-            num_size++; 
-        }
-        value = malloc(sizeof(char) * num_size); 
-        memcpy(value, (void*)&client_req[VALUE_OFFSET], num_size);  
+       if (!value_parser(client_req, num_size, KEY_OFFSET, VALUE_OFFSET)) {
+            return; 
+       } 
     }
+    else if (is_get) {
+        // Dummy number to avoid a runtime error of a VLA being 0, doesn't matter since value isn't used. 
+        num_size = 1; 
+    }
+    char value[num_size]; 
+    memcpy(value, (void*)&client_req[VALUE_OFFSET], num_size);
 
+    // Run the operation after parsing the client request. 
     Result get_result; 
-    bool op_success = run_op(cmd, key, value, num_size, database, get_result); 
+    bool op_success = run_op(cmd, key, (void*)value, num_size, database, get_result); 
     printf("Op success = %d\n", op_success); 
 
-    // Now communicate with the client
+    // Now communicate with the client to send success response back and potentially data. 
     client_response(client_fd, cmd, value, num_size, op_success, get_result);  
-
-    if (is_put) {
-        free(value); 
-    }
 }
 
 // Supported format type: GET <string> or PUT <string> <arbitrary value><\0 or \n>
@@ -251,7 +262,7 @@ int main(int argc, char *argv[]) {
     // Now mark the socket as listenable so it can receive requests from clients
     int max_connections = 128;
     listen(socket_fd, max_connections);
-    // Now accept incoming requests from clients
+    // Now accept incoming requests from clients, TODO: Explore using epoll/other mechanisms to avoid busy waiting. 
     while (true)
     {
         socklen_t addr_size = sizeof(address); 
