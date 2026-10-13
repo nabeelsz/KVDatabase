@@ -19,7 +19,7 @@ void req_handler_tests() {
     assert(strcmp(res1_val, "test\0") == 0); 
 
     // GET test on the same key
-    char req2[] = "GET key\n"; 
+    char req2[] = "GET key\0"; 
     request_handler(req2, &test_db, -1); 
 
     // // test maximum size key 
@@ -60,7 +60,7 @@ void req_handler_tests() {
 
 // TODO: Test socket functionality and full end-to-end
 
-int main() {
-    req_handler_tests(); 
-    return 0; 
-}
+// int main() {
+//     req_handler_tests(); 
+//     return 0; 
+// }

@@ -24,8 +24,8 @@ struct ThreadArgs {
 }; 
 
 
-bool run_op(char operation[CMD_LENGTH + NULL_TERMINATOR_SIZE], char key[MAX_STRING_LENGTH + NULL_TERMINATOR_SIZE], void* value, int size, KVDataBase* database, 
-    Result*& get_result) 
+bool run_op(char operation[CMD_LENGTH + NULL_TERMINATOR_SIZE], char key[MAX_STRING_LENGTH + NULL_TERMINATOR_SIZE], void* value, int size, 
+    KVDataBase* database, Result& get_result) 
     {
     if (strcmp(operation, "PUT\0") == 0) {
         int success = database->put(key, value, size); 
@@ -33,9 +33,10 @@ bool run_op(char operation[CMD_LENGTH + NULL_TERMINATOR_SIZE], char key[MAX_STRI
         return true;  
     }
     else if (strcmp(operation, "GET\0") == 0) {
-        *get_result = database->get(key); 
-        printf("Result size = %d\n", get_result->size); 
-        if (get_result->size == FAILURE) return false; 
+        get_result = database->get(key); 
+        printf("Result size = %d\n", get_result.size);
+        size = get_result.size;  
+        if (get_result.size == FAILURE) return false; 
         return true; 
     }
 
@@ -44,7 +45,8 @@ bool run_op(char operation[CMD_LENGTH + NULL_TERMINATOR_SIZE], char key[MAX_STRI
     return false; 
 }
 
-void client_response(int client_fd, char cmd[CMD_LENGTH + NULL_TERMINATOR_SIZE], void* value, int size, bool success) {
+void client_response(int client_fd, char cmd[CMD_LENGTH + NULL_TERMINATOR_SIZE], void* value, int size, bool success, 
+    Result get_result) {
     const char* response; 
     if (success) {
         response = "Success!\n"; 
@@ -70,8 +72,8 @@ void client_response(int client_fd, char cmd[CMD_LENGTH + NULL_TERMINATOR_SIZE],
     // Send over GET value if op is a GET with the same methodology used in the response communication. 
     if (strcmp(cmd, "GET\0") == 0) {
         total_sent = 0; 
-        while (total_sent < size) {
-            int bytes_sent = send(client_fd, value + total_sent, size - total_sent, MSG_NOSIGNAL); 
+        while (total_sent < get_result.size) {
+            int bytes_sent = send(client_fd, get_result.data + total_sent, get_result.size - total_sent, MSG_NOSIGNAL); 
             if (bytes_sent == -1) {
                 printf("ERROR: Client closed socket.\n"); 
                 return; 
@@ -119,8 +121,9 @@ void request_handler(char client_req[MAX_MSG_BYTES], KVDataBase* database, int c
         }
         num_read++;  
     }
-    // If we've reached the end of the maximum length of the key and there's still more then mark it as invalid. 
-    if (num_read == MAX_STRING_LENGTH && client_req[num_read + KEY_OFFSET] != ' ') {
+    // If we've reached the end of the maximum length of the key and there's still more for then mark it as invalid. 
+    if ((strcmp(cmd, "PUT") == 0) && (num_read == MAX_STRING_LENGTH && client_req[num_read + KEY_OFFSET] != ' ') || 
+        ((strcmp(cmd, "GET") == 0) && client_req[num_read + KEY_OFFSET] != '\0')) {
         printf("ERROR: Key is too larger than the supported maximum key size.\n"); 
         return;
     }
@@ -161,14 +164,13 @@ void request_handler(char client_req[MAX_MSG_BYTES], KVDataBase* database, int c
         value = malloc(sizeof(char) * num_size); 
         memcpy(value, (void*)&client_req[VALUE_OFFSET], num_size);  
     }
-    Result* get_result = (Result*)malloc(sizeof(Result)); 
+    Result get_result; 
     bool op_success = run_op(cmd, key, value, num_size, database, get_result); 
     printf("Op success = %d\n", op_success); 
 
     // Now communicate with the client
-    client_response(client_fd, cmd, value, num_size, op_success);  
+    client_response(client_fd, cmd, value, num_size, op_success, get_result);  
 
-    free(get_result); 
     if (is_put) {
         free(value); 
     }
@@ -190,6 +192,7 @@ void* thread_func(void* thread_args) {
 
     // Keep reading until we reach the end of the request, or the request is too large, or the client closes the socket.  
     while ((bytes_received = recv(client_fd, (void*)(client_buf + num_bytes_read), MAX_MSG_BYTES - num_bytes_read, 0)) >= -1) {
+        printf("%.*s\n", bytes_received, client_buf + num_bytes_read);
         if (bytes_received == 0) {
             printf("Client closed socket.\n"); 
             return NULL; 
@@ -198,15 +201,15 @@ void* thread_func(void* thread_args) {
             printf("Error occurred regarding socket.\n");
             return NULL; 
         }
-        if (num_bytes_read + bytes_received > MAX_MSG_BYTES) { 
+        num_bytes_read += bytes_received; 
+        if (num_bytes_read > MAX_MSG_BYTES) { 
             printf("Invalid message: too large.\n"); 
             close(client_fd); 
             return NULL;  
         }
-        if (client_buf[bytes_received] == '\0' || client_buf[bytes_received] == '\n') {
+        if (client_buf[num_bytes_read - 1] == '\0' || client_buf[num_bytes_read - 1] == '\n') {
             break; 
         }
-        num_bytes_read =+ bytes_received; 
     }
 
     request_handler(client_buf, database, client_fd); 
