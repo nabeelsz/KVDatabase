@@ -128,6 +128,7 @@ void request_handler(char client_req[MAX_MSG_BYTES], KVDataBase* database, int c
     char key[num_read + NULL_TERMINATOR_SIZE]; 
     memcpy(key, (void*)(client_req + KEY_OFFSET), num_read); 
     key[num_read + NULL_TERMINATOR_SIZE - 1] = '\0'; 
+    printf("Command key is %s\n", key); 
 
     // If the command is a PUT, get the size of the value in bytes and then memcpy it. 
     int num_size = 0; 
@@ -214,7 +215,7 @@ void* thread_func(void* thread_args) {
 }
 
 int main(int argc, char *argv[]) {
-    KVDataBase* database = (KVDataBase*)malloc(sizeof(KVDataBase)); 
+    KVDataBase database; 
 
     // Socket code:
     // check if a port is supplied, otherwise use a random available port (through port 0)
@@ -248,7 +249,7 @@ int main(int argc, char *argv[]) {
             printf("ERROR: Issue retrieving connection file descriptor from accept\n");
         }
         ThreadArgs* args = (ThreadArgs*)malloc(sizeof(ThreadArgs)); 
-        *args = ThreadArgs{connected_fd, database}; 
+        *args = ThreadArgs{connected_fd, &database}; 
         pthread_t placeholder; 
         if (pthread_create(&placeholder, nullptr, &thread_func, (void*)args) != 0) {
             printf("ERROR: Error with creating thread.\n");
