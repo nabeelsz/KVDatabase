@@ -12,10 +12,10 @@ NodePool::NodePool() {
     while (num_allocated < MAX_ENTRIES) {
         HashEntry* curr = (HashEntry*)malloc(sizeof(HashEntry)); 
         // + 1 for the null terminator
-        curr->key = (char*)malloc(sizeof(char) * MAX_STRING_LENGTH + 1); 
+        curr->key = (char*)malloc(sizeof(char) * MAX_STRING_LENGTH + NULL_TERMINATOR_SIZE); 
         // allocating an arbitrary number of bytes, TODO: decide maximum number of bytes we want to support, also is there a way
         // to avoid fragmentation? since some values may be ints which take up less bytes. Need to investigate.
-        curr->data = malloc(sizeof(char) * MAX_STRING_LENGTH + 1); 
+        curr->data = malloc(sizeof(char) * MAX_STRING_LENGTH + NULL_TERMINATOR_SIZE); 
         curr->size = 0; 
         curr->next = nullptr; 
         // If first allocation then modify head variable to point to the first allocated
@@ -30,6 +30,7 @@ NodePool::NodePool() {
 // Get a node from the node pool with relevant metadata for it to be inserted. 
 HashEntry* NodePool::get_node(char* key, void* bytes, int size) {
     HashEntry* returned_node = curr_available; 
+    assert(curr_available); 
     strcpy(returned_node->key, key);
     memcpy(returned_node->data, bytes, size); 
     assert(returned_node->data); 
@@ -118,8 +119,8 @@ Result HashMap::get(char* key) {
     int hash = hash_func(key); 
     HashEntry* current_node = map[hash]; 
     printf("Hash for key %s is %d\n", key, hash);
-    printf("Current node key = %s\n", current_node->key); 
     while (current_node) {
+        printf("Current node key = %s\n", current_node->key); 
         if (strcmp(key, current_node->key) == 0) break; 
         current_node = current_node->next; 
     }

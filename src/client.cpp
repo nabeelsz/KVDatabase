@@ -11,7 +11,6 @@
 
 // Max CMD length (PUT or GET)
 const int CMD_LENGTH = 3; 
-const int NULL_TERMINATOR_SIZE = 1; 
 const int SPACE_OFFSET = 1; 
 // Maximum total message bytes = length of command + space inbetween 
 // +  largest possible length of key + space inbetween + largest possible length of value + null terminator byte. 
@@ -85,59 +84,67 @@ void client_response(int client_fd, char cmd[CMD_LENGTH + NULL_TERMINATOR_SIZE],
     close(client_fd); 
 }
 
-// Handles the request by firstly parsing it, and then running it on the database, returning true if the request was successfully
-// ran or false if the request was malformed or if the request was not successfully ran in the database. 
-void request_handler(char client_req[MAX_MSG_BYTES], KVDataBase* database, int client_fd) {
-    char cmd[CMD_LENGTH + NULL_TERMINATOR_SIZE]; 
-    void* value; 
-
+bool cmd_parser(char client_req[MAX_MSG_BYTES], char** cmd) {
     // Copy over the command + add a null terminator and verify it's valid. 
-    memcpy(cmd, client_req, CMD_LENGTH); 
-    cmd[CMD_LENGTH] = '\0'; 
-    bool is_put = strcmp(cmd, "PUT\0") == 0; 
-    if (!is_put && strcmp(cmd, "GET\0") != 0) {
+    memcpy(*cmd, client_req, CMD_LENGTH); 
+    (*cmd)[CMD_LENGTH] = '\0'; 
+    printf("Test, cmd = %s\n", *cmd); 
+    if (strcmp((*cmd), "PUT\0") != 0 && strcmp((*cmd), "GET\0") != 0) {
         printf("ERROR: Operation is not a PUT or GET\n"); 
-        return;
+        return false;
     }
     // Need a space between CMD and Key. 
     if (client_req[3] != ' ') {
         printf("ERROR: No space inbetween the key and the command\n"); 
-        return; 
+        return false; 
     }
-    printf("Database command is %s\n", cmd); 
-    
+    return true; 
+}
+
+// Handles the request by firstly parsing it, and then running it on the database, returning true if the request was successfully
+// ran or false if the request was malformed or if the request was not successfully ran in the database. 
+void request_handler(char client_req[MAX_MSG_BYTES], KVDataBase* database, int client_fd) {
+    char cmd[CMD_LENGTH + NULL_TERMINATOR_SIZE]; 
+    char* ptr = cmd; 
+    void* value; 
+
+    if (!cmd_parser(client_req, &ptr)) {
+        return; 
+    } 
+    bool is_put = (strcmp(cmd, "PUT\0") == 0); 
 
     // For parsing over the key.
     int num_read = 0; 
     int key_idx = 0; 
-    const int KEY_OFFSET = 4; 
+    const int CMD_OFFSET = CMD_LENGTH + SPACE_OFFSET; 
     
     // Parse over the key until we reach the end of it, and then memcpy it if it's valid. 
     while (num_read < MAX_STRING_LENGTH) {
         // Space for PUT or null terminator/newline for GET meaning that there is no more of the key to read. 
-        if (client_req[num_read + KEY_OFFSET ] == ' ' || client_req[num_read + KEY_OFFSET] == '\0' || 
-            client_req[num_read + KEY_OFFSET] == '\n') {
+        if (client_req[num_read + CMD_OFFSET ] == ' ' || client_req[num_read + CMD_OFFSET] == '\0' || 
+            client_req[num_read + CMD_OFFSET] == '\n') {
             break; 
         }
         num_read++;  
     }
     // If we've reached the end of the maximum length of the key and there's still more for then mark it as invalid. 
-    if ((strcmp(cmd, "PUT") == 0) && (num_read == MAX_STRING_LENGTH && client_req[num_read + KEY_OFFSET] != ' ') || 
-        ((strcmp(cmd, "GET") == 0) && client_req[num_read + KEY_OFFSET] != '\0')) {
+    if ((strcmp(cmd, "PUT") == 0) && (num_read == MAX_STRING_LENGTH && client_req[num_read + CMD_OFFSET] != ' ') || 
+        ((strcmp(cmd, "GET") == 0) && client_req[num_read + CMD_OFFSET] != '\0')) {
         printf("ERROR: Key is too larger than the supported maximum key size.\n"); 
         return;
     }
     printf("Num read = %d\n", num_read); 
     char key[num_read + NULL_TERMINATOR_SIZE]; 
-    memcpy(key, (void*)(client_req + KEY_OFFSET), num_read); 
+    memcpy(key, (void*)(client_req + CMD_OFFSET), num_read); 
     key[num_read + NULL_TERMINATOR_SIZE - 1] = '\0'; 
     printf("Command key is %s\n", key); 
 
     // If the command is a PUT, get the size of the value in bytes and then memcpy it. 
     int num_size = 0; 
+    const int KEY_OFFSET = num_read + SPACE_OFFSET; 
     if (is_put) {
         // Begin at the first byte of the value.
-        const int VALUE_OFFSET = KEY_OFFSET + num_read + 1; 
+        const int VALUE_OFFSET = CMD_OFFSET + KEY_OFFSET; 
         while (num_size < MAX_STRING_LENGTH) {
             int value_idx = num_size + VALUE_OFFSET; 
             if (client_req[value_idx] == '\0' || client_req[value_idx] == '\n') {
@@ -164,6 +171,7 @@ void request_handler(char client_req[MAX_MSG_BYTES], KVDataBase* database, int c
         value = malloc(sizeof(char) * num_size); 
         memcpy(value, (void*)&client_req[VALUE_OFFSET], num_size);  
     }
+
     Result get_result; 
     bool op_success = run_op(cmd, key, value, num_size, database, get_result); 
     printf("Op success = %d\n", op_success); 
@@ -184,6 +192,7 @@ void* thread_func(void* thread_args) {
     ThreadArgs* args = (ThreadArgs*)thread_args;
     int client_fd = args->client_fd; 
     KVDataBase* database = args->database;
+    free(args); 
     
     // Used for parsing client requests
     char client_buf[MAX_MSG_BYTES]; 

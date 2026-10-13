@@ -10,6 +10,8 @@
 const int MAX_ENTRIES = 1024; 
 // Maximum string length in bytes. This is used to cap the largest string a key can be, as well as the value. 
 const int MAX_STRING_LENGTH = 256; 
+const int NULL_TERMINATOR_SIZE = 1; 
+
 
 enum ErrCodes {
     SUCCESS, 
