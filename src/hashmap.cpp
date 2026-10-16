@@ -30,7 +30,7 @@ NodePool::NodePool() {
 // Get a node from the node pool with relevant metadata for it to be inserted. 
 HashEntry* NodePool::get_node(char* key, void* bytes, int size) {
     HashEntry* returned_node = curr_available; 
-    assert(curr_available); 
+    assert(returned_node != nullptr); 
     strcpy(returned_node->key, key);
     memcpy(returned_node->data, bytes, size); 
     assert(returned_node->data); 
@@ -50,6 +50,8 @@ HashMap::HashMap() {
 
 HashMap::~HashMap() {
     // Firstly delete nodes from the linked list
+    printf("Number of entries in map = %d\n", num_entries);
+    int num_pool = 0; 
     HashEntry* curr_node = pool.curr_available; 
     while (curr_node) {
         HashEntry* next = curr_node->next; 
@@ -57,8 +59,9 @@ HashMap::~HashMap() {
         free(curr_node->data);
         free(curr_node); 
         curr_node = next; 
+        num_pool++; 
     }
-
+    assert(num_pool + num_entries == MAX_ENTRIES); 
     // Now delete the allocated nodes in the map. 
     for (int i = 0; i < MAX_ENTRIES; i++) {
         curr_node = map[i]; 
