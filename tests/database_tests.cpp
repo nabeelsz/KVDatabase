@@ -59,7 +59,7 @@ void database_perf_tests() {
     pthread_cond_broadcast(&cv); 
     // Need to send this thread to sleep until all PUTS have finsihed so args don't get destructed 
     int num_done = 0; 
-    while (num_done < 32) {
+    while (num_done < NUM_THREADS) {
         sem_wait(&semaphore); 
         num_done++; 
         // printf("Num done = %d\n", num_done); 
