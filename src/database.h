@@ -6,8 +6,9 @@
 #include <cstdint> 
 #include <random> 
 #include <pthread.h> 
+#include <atomic> 
 
-#include <hashmap.h> 
+#include "hashmap.h" 
 
 struct KVDataBase { 
     KVDataBase() {
@@ -22,5 +23,8 @@ struct KVDataBase {
     Result get(char* key);
 
     HashMap kv_map; 
+    // Currently unused. 
     pthread_mutex_t kv_lock; 
+    // For lock-less synchronization, creating this and benchmarking it vs a lock based implementation 
+    std::atomic_bool locked = false; 
 }; 

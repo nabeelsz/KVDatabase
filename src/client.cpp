@@ -250,6 +250,7 @@ int main(int argc, char *argv[]) {
     int socket_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (socket_fd == -1) {
         printf("ERROR: Issue creating socket.\n");
+        return -1; 
     }
     // Upon successful creation, bind the socket to an address
     struct sockaddr_in address = {0}; 
@@ -258,6 +259,7 @@ int main(int argc, char *argv[]) {
     address.sin_addr.s_addr = INADDR_ANY; 
     if (bind(socket_fd, (sockaddr *)&address, sizeof(address)) == -1) {
         printf("ERROR: Issue binding socket.\n");
+        return -1; 
     }
     // Now mark the socket as listenable so it can receive requests from clients
     int max_connections = 128;
