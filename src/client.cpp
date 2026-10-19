@@ -7,6 +7,7 @@
 #include <unistd.h> 
 
 #include "database.h"
+#include "debug.h"
 
 // Max CMD length (PUT or GET)
 const int CMD_LENGTH = 3; 
@@ -31,7 +32,11 @@ bool run_op(char operation[CMD_LENGTH + NULL_TERMINATOR_SIZE], char key[MAX_STRI
     }
     else if (strcmp(operation, "GET\0") == 0) {
         get_result = database->get(key); 
+
+        #if DEBUG
         printf("Result size = %d\n", get_result.size);
+        #endif 
+
         size = get_result.size;  
         if (get_result.size == FAILURE) return false; 
         return true; 
@@ -85,7 +90,11 @@ bool cmd_parser(char client_req[MAX_MSG_BYTES], char** cmd) {
     // Copy over the command + add a null terminator and verify it's valid. 
     memcpy(*cmd, client_req, CMD_LENGTH); 
     (*cmd)[CMD_LENGTH] = '\0'; 
+
+    #if DEBUG
     printf("Test, cmd = %s\n", *cmd); 
+    #endif
+
     if (strcmp((*cmd), "PUT\0") != 0 && strcmp((*cmd), "GET\0") != 0) {
         printf("ERROR: Operation is not a PUT or GET\n"); 
         return false;
@@ -163,7 +172,11 @@ void request_handler(char client_req[MAX_MSG_BYTES], KVDataBase* database, int c
     if (!key_parser(client_req, num_read, CMD_OFFSET, is_put, is_get)) {
         return; 
     }
-    printf("Num read = %d\n", num_read); 
+
+    #if DEBUG
+    printf("Num read = %d\n", num_read);
+    #endif  
+
     char key[num_read + NULL_TERMINATOR_SIZE]; 
     memcpy(key, (void*)(client_req + CMD_OFFSET), num_read); 
     key[num_read + NULL_TERMINATOR_SIZE - 1] = '\0'; 
@@ -189,7 +202,10 @@ void request_handler(char client_req[MAX_MSG_BYTES], KVDataBase* database, int c
     // Run the operation after parsing the client request. 
     Result get_result; 
     bool op_success = run_op(cmd, key, (void*)value, num_size, database, get_result); 
+
+    #if DEBUG
     printf("Op success = %d\n", op_success); 
+    #endif 
 
     // Now communicate with the client to send success response back and potentially data. 
     client_response(client_fd, cmd, value, num_size, op_success, get_result);  
@@ -212,7 +228,10 @@ void* thread_func(void* thread_args) {
 
     // Keep reading until we reach the end of the request, or the request is too large, or the client closes the socket.  
     while ((bytes_received = recv(client_fd, (void*)(client_buf + num_bytes_read), MAX_MSG_BYTES - num_bytes_read, 0)) >= -1) {
+        #if DEBUG
         printf("%.*s\n", bytes_received, client_buf + num_bytes_read);
+        #endif 
+
         if (bytes_received == 0) {
             printf("Client closed socket.\n"); 
             return NULL; 

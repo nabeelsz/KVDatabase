@@ -7,6 +7,8 @@
 
 #include <cstdint>
 
+#include "debug.h"
+
 const int MAX_ENTRIES = 1024; 
 // Maximum string length in bytes. This is used to cap the largest string a key can be, as well as the value. 
 const int MAX_STRING_LENGTH = 256; 

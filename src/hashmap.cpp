@@ -50,7 +50,10 @@ HashMap::HashMap() {
 
 HashMap::~HashMap() {
     // Firstly delete nodes from the linked list
-    // printf("Number of entries in map = %d\n", num_entries);
+    #if DEBUG
+    printf("Number of entries in map = %d\n", num_entries);
+    #endif 
+
     int num_pool = 0; 
     HashEntry* curr_node = pool.curr_available; 
     while (curr_node) {
@@ -78,8 +81,10 @@ HashMap::~HashMap() {
 }
 
 int HashMap::insert(char* key, void* bytes, int size) {
-    // printf("Key = %s\n", key); 
-    // printf("Size of data = %d\n", size); 
+    #if DEBUG
+    printf("Key = %s\n", key); 
+    printf("Size of data = %d\n", size); 
+    #endif 
 
     if (num_entries == MAX_ENTRIES) {
         printf("ERROR: Maximum entries.\n"); 
@@ -96,8 +101,12 @@ int HashMap::insert(char* key, void* bytes, int size) {
     int hash = hash_func(key);
     HashEntry* new_entry = pool.get_node(key, bytes, size); 
     assert(new_entry->size == size); 
-    // printf("New entry size = %d\n", new_entry->size); 
-    // printf("New entry hash for key %s is %d\n", key, hash); 
+
+    #if DEBUG
+    printf("New entry size = %d\n", new_entry->size); 
+    printf("New entry hash for key %s is %d\n", key, hash); 
+    #endif 
+
     assert(strcmp(new_entry->key, key) == 0); 
     // Next pointer is populated due to node pool so set it to nullptr
     // TODO: maybe instead of having the node pool be a linked 
@@ -123,9 +132,15 @@ int HashMap::insert(char* key, void* bytes, int size) {
 Result HashMap::get(char* key) {
     int hash = hash_func(key); 
     HashEntry* current_node = map[hash]; 
+
+    #if DEBUG
     // printf("Hash for key %s is %d\n", key, hash);
+    #endif 
+
     while (current_node) {
-        // printf("Current node key = %s\n", current_node->key); 
+        #if DEBUG
+        printf("Current node key = %s\n", current_node->key);
+        #endif  
         if (strcmp(key, current_node->key) == 0) break; 
         current_node = current_node->next; 
     }
