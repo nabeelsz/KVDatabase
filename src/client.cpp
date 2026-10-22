@@ -7,6 +7,7 @@
 #include <unistd.h> 
 #include <sys/resource.h> 
 #include <sys/epoll.h> 
+#include <errno.h> 
 
 #include "database.h"
 #include "debug.h"
@@ -22,7 +23,7 @@ const int MAX_MSG_BYTES = CMD_LENGTH + MAX_STRING_LENGTH * 2 + NULL_TERMINATOR_S
 struct ThreadArgs {
     int client_fd; 
     KVDataBase* database; 
-    char* client_buf[MAX_MSG_BYTES]; 
+    char client_buf[MAX_MSG_BYTES]; 
 }; 
 struct ConnectionState {
     char client_buf[MAX_MSG_BYTES]; 
@@ -133,7 +134,7 @@ bool key_parser(char client_req[MAX_MSG_BYTES], int& num_read, const int CMD_OFF
     return true; 
 }
 
-bool value_parser(char client_req[MAX_MSG_BYTES], int& num_size, const int KEY_OFFSET, const int VALUE_OFFSET) {
+bool value_parser(char client_req[MAX_MSG_BYTES], int& num_size, const int VALUE_OFFSET) {
     // Begin at the first byte of the value.
     while (num_size < MAX_STRING_LENGTH) {
         int value_idx = num_size + VALUE_OFFSET; 
@@ -196,7 +197,7 @@ void request_handler(char client_req[MAX_MSG_BYTES], KVDataBase* database, int c
     const int VALUE_OFFSET = CMD_OFFSET + KEY_OFFSET; 
 
     if (is_put) {
-       if (!value_parser(client_req, num_size, KEY_OFFSET, VALUE_OFFSET)) {
+       if (!value_parser(client_req, num_size, VALUE_OFFSET)) {
             return; 
        } 
     }
@@ -222,13 +223,17 @@ void request_handler(char client_req[MAX_MSG_BYTES], KVDataBase* database, int c
 // Supported format type: GET <string> or PUT <string> <arbitrary value><\0 or \n>
 // Note that the arbitrary value's maximum size is 512 bytes. 
 // A valid request needs to have a null terminator or endline character so the server knows when to stop reading.  
-// TODO: Create new helper function for the epoll loop
+// TODO: Create new helper function for the epoll parsing loop
 
 
-// A trampoline function to prevent deinitialization of argument variables. 
+// A trampoline function used to cleanly pass in argument variables. This will eventually be removed. 
 void* request_trampoline(void* thread_args) {
     ThreadArgs* args = (ThreadArgs*)thread_args;
-    request_handler(*(args->client_buf), args->database, args->client_fd);
+    request_handler(args->client_buf, args->database, args->client_fd);
+    // TODO: Implement a thread pool that maps file descriptor -> corresponding worker thread to deal with a fix sized allocation 
+    // of threads and memory allocation, and to remove dynamic allocation. 
+    free(args); 
+    return NULL; 
 }
 
 int main(int argc, char *argv[]) {
@@ -246,6 +251,9 @@ int main(int argc, char *argv[]) {
         printf("ERROR: Issue creating socket.\n");
         return -1; 
     }
+    #if DEBUG
+        printf("Socket initialized for server = %d.\n", socket_fd); 
+    #endif 
     // Upon successful creation, bind the socket to an address
     struct sockaddr_in address = {0}; 
     address.sin_family = AF_INET; 
@@ -259,37 +267,46 @@ int main(int argc, char *argv[]) {
     int max_connections = 128;
     listen(socket_fd, max_connections);
 
-    // Initialize epoll and create a thread for the epoll loop to watch over current connections
+    // Initialize an epoll file descriptor and add the listening socket to the epoll file descriptor list
     ConnectionState state[RLIMIT_NOFILE]; 
     int epoll_fd = epoll_create(RLIMIT_FSIZE); 
     if (epoll_fd == -1) {
         printf("ERROR: Issue getting epoll file descriptor.\n"); 
-        return; 
+        return -1; 
     }
     epoll_event ev, events[RLIMIT_FSIZE]; 
     ev.events = EPOLLIN; 
-    // epoll_wait's events structure returns integers representing the ready file descriptor(s) number
-    ev.data.fd = 1; 
+    // epoll_wait's events structure returns integers representing the ready file descriptor(s) number, but it needs to be 
+    // supplied. 
+    ev.data.fd = socket_fd; 
     if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, socket_fd, &ev) == -1) {
         printf("Error: Error adding server's socket to epoll instance.\n"); 
+        return -1; 
     }
 
     while (true) {
         int num_ready = epoll_wait(epoll_fd, events, RLIMIT_FSIZE, -1); 
         if (num_ready == -1) {
             printf("Error: Error with epoll_wait.\n"); 
-            return; 
+            return -1; 
         }
         for (int i = 0; i < num_ready; i++) {
             int client_fd = events[i].data.fd; 
+            #if DEBUG
+                printf("Client file descriptor from epoll ready list = %d.\n", client_fd); 
+                printf("Client fd == socket fd = %d.\n", client_fd == socket_fd);
+                printf("Socket fd initialized for server = %d.\n", socket_fd);  
+            #endif 
             // Incoming client request to create a connection with the server
             if (client_fd == socket_fd) {
+                printf("test!\n"); 
                 socklen_t addr_size = sizeof(address); 
                 int connected_fd = accept(socket_fd, (sockaddr *)&address, &addr_size);
                  if (connected_fd == -1) {
                     printf("ERROR: Issue retrieving connection file descriptor from accept\n");
                     continue; 
                 }
+                ev.data.fd = connected_fd; 
                 if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, connected_fd, &ev) == -1) {
                     printf("Error adding file descriptor to epoll list.\n"); 
                     continue; 
@@ -301,12 +318,12 @@ int main(int argc, char *argv[]) {
                 state[client_fd].bytes_received = 
                 recv(
                     client_fd, 
-                    (void*)(state[client_fd].bytes_received + state[client_fd].num_bytes_read), 
+                    (void*)(state[client_fd].client_buf + state[client_fd].num_bytes_read), 
                     MAX_MSG_BYTES - state[client_fd].num_bytes_read, 
                     0);
                 state[client_fd].num_bytes_read += state[client_fd].bytes_received;   
                 #if DEBUG
-                    printf("%.*s\n", bytes_received, client_buf + num_bytes_read);
+                    printf("%.*s\n", state[client_fd].bytes_received, state[client_fd].client_buf + state[client_fd].num_bytes_read);
                 #endif 
                 // No errors, check if done parsing what the client sent. 
                 if (state[client_fd].bytes_received > 0 && 
@@ -316,18 +333,24 @@ int main(int argc, char *argv[]) {
                         || state[client_fd].client_buf[state[client_fd].num_bytes_read - 1] == '\n') {
                         deinitialize = true; 
                         char* buf_ptr = state[client_fd].client_buf; 
-                        ThreadArgs args = {client_fd, &database, buf_ptr};  
+                        ThreadArgs* args = (ThreadArgs*)malloc(sizeof(ThreadArgs));
+                        args->client_fd = client_fd; 
+                        args->database = &database;
+                        memcpy(args->client_buf, state[client_fd].client_buf, sizeof(char) * state[client_fd].num_bytes_read);  
                         pthread_t id; 
-                        pthread_create(&id, NULL, &request_trampoline, (void*)(&args));  
+                        pthread_create(&id, NULL, &request_trampoline, (void*)(args));  
                     }
                 }
                 // If there is an error regarding the data sent or attempting to receive it. 
                 else {
                     if (state[client_fd].bytes_received == 0) {
-                        printf("Error: Client closed socket.\n"); 
+                        printf("Error: Client closed socket for file descriptor %d.\n", client_fd); 
+                        close(socket_fd); 
                     } 
                     else if (state[client_fd].bytes_received == -1) {
-                        printf("Error occurred regarding socket.\n");
+                        int err_val = errno; 
+                        printf("Error occurred regarding socket %d, errno value: %d.\n", client_fd, err_val);
+                        return -1; 
                     }
                     else if (state[client_fd].num_bytes_read > MAX_MSG_BYTES) {
                         printf("Invalid message: too large.\n"); 
@@ -340,6 +363,9 @@ int main(int argc, char *argv[]) {
                     memset(state[client_fd].client_buf, 0, sizeof(char) * MAX_MSG_BYTES); 
                     state[client_fd].num_bytes_read = 0; 
                     state[client_fd].bytes_received = 0; 
+                    if (epoll_ctl(epoll_fd, EPOLL_CTL_DEL, client_fd, &ev) == -1) {
+                        printf("Error: Epoll deletion of client fd %d failed.\n", client_fd); 
+                    }
                 }
             }
         }
@@ -347,4 +373,5 @@ int main(int argc, char *argv[]) {
 
     close(socket_fd);
     close(epoll_fd);  
+    return 0; 
 }
