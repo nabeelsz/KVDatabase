@@ -56,7 +56,7 @@ bool run_op(char operation[CMD_LENGTH + NULL_TERMINATOR_SIZE], char key[MAX_STRI
     return false; 
 }
 
-void client_response(int client_fd, char cmd[CMD_LENGTH + NULL_TERMINATOR_SIZE], void* value, int size, bool success, 
+void client_response(int client_fd, char cmd[CMD_LENGTH + NULL_TERMINATOR_SIZE], bool success, 
     Result get_result) {
     const char* response; 
     if (success) {
@@ -126,7 +126,7 @@ bool key_parser(char client_req[MAX_MSG_BYTES], int& num_read, const int CMD_OFF
         num_read++;  
     }
     // If we've reached the end of the maximum length of the key and there's still more for then mark it as invalid. 
-    if ((is_put) && (num_read == MAX_STRING_LENGTH && client_req[num_read + CMD_OFFSET] != ' ') || 
+    if ((is_put) && ((num_read == MAX_STRING_LENGTH && client_req[num_read + CMD_OFFSET] != ' ')) || 
         ((is_get) && client_req[num_read + CMD_OFFSET] != '\0')) {
         printf("ERROR: Key is too larger than the supported maximum key size.\n"); 
         return false;
@@ -217,14 +217,8 @@ void request_handler(char client_req[MAX_MSG_BYTES], KVDataBase* database, int c
     #endif 
 
     // Now communicate with the client to send success response back and potentially data. 
-    client_response(client_fd, cmd, value, num_size, op_success, get_result);  
+    client_response(client_fd, cmd, op_success, get_result);  
 }
-
-// Supported format type: GET <string> or PUT <string> <arbitrary value><\0 or \n>
-// Note that the arbitrary value's maximum size is 512 bytes. 
-// A valid request needs to have a null terminator or endline character so the server knows when to stop reading.  
-// TODO: Create new helper function for the epoll parsing loop
-
 
 // A trampoline function used to cleanly pass in argument variables. This will eventually be removed. 
 void* request_trampoline(void* thread_args) {
@@ -235,6 +229,67 @@ void* request_trampoline(void* thread_args) {
     free(args); 
     return NULL; 
 }
+
+// Supported format type: GET <string> or PUT <string> <arbitrary value><\0 or \n>
+// Note that the arbitrary value's maximum size is 512 bytes. 
+// A valid request needs to have a null terminator or endline character so the server knows when to stop reading.  
+// TODO: Create new helper function for the epoll parsing loop
+void receive_message(KVDataBase* database, int epoll_fd, int client_fd, ConnectionState* state, epoll_event* ev) {
+    bool deinitialize = false; 
+    state[client_fd].bytes_received = 
+    recv(
+        client_fd, 
+        (void*)(state[client_fd].client_buf + state[client_fd].num_bytes_read), 
+        MAX_MSG_BYTES - state[client_fd].num_bytes_read, 
+        0);
+    state[client_fd].num_bytes_read += state[client_fd].bytes_received;   
+
+    #if DEBUG
+        printf("%.*s\n", state[client_fd].bytes_received, state[client_fd].client_buf + state[client_fd].num_bytes_read);
+    #endif 
+
+    // No errors, check if done parsing what the client sent. 
+    if (state[client_fd].bytes_received > 0 && 
+        (state[client_fd].num_bytes_read <= MAX_MSG_BYTES)) {
+        // Reached end of receiving client request, create a thread to now parse this request and potentially run it. 
+        if (state[client_fd].client_buf[state[client_fd].num_bytes_read - 1] == '\0' 
+            || state[client_fd].client_buf[state[client_fd].num_bytes_read - 1] == '\n') {
+            deinitialize = true; 
+            ThreadArgs* args = (ThreadArgs*)malloc(sizeof(ThreadArgs));
+            args->client_fd = client_fd; 
+            args->database = database;
+            memcpy(args->client_buf, state[client_fd].client_buf, sizeof(char) * state[client_fd].num_bytes_read);  
+            pthread_t id; 
+            pthread_create(&id, NULL, &request_trampoline, (void*)(args));  
+        }
+    }
+    // If there is an error regarding the data sent or attempting to receive it. 
+    else {
+        if (state[client_fd].bytes_received == 0) {
+            printf("Error: Client closed socket for file descriptor %d.\n", client_fd); 
+            close(client_fd); 
+        } 
+        else if (state[client_fd].bytes_received == -1) {
+            int err_val = errno; 
+            printf("Error occurred regarding socket %d, errno value: %d.\n", client_fd, err_val);
+        }
+        else if (state[client_fd].num_bytes_read > MAX_MSG_BYTES) {
+            printf("Invalid message: too large.\n"); 
+            close(client_fd); 
+        }
+        deinitialize = true; 
+    }
+    // Reset state to not provide false data if a future connection reoccupies this file descriptor. 
+    if (deinitialize) {
+        memset(state[client_fd].client_buf, 0, sizeof(char) * MAX_MSG_BYTES);
+        state[client_fd].num_bytes_read = 0; 
+        state[client_fd].bytes_received = 0; 
+        if (epoll_ctl(epoll_fd, EPOLL_CTL_DEL, client_fd, ev) == -1) {
+            printf("Error: Epoll deletion of client fd %d failed.\n", client_fd); 
+        }
+    }
+}
+
 
 int main(int argc, char *argv[]) {
     KVDataBase database; 
@@ -299,7 +354,6 @@ int main(int argc, char *argv[]) {
             #endif 
             // Incoming client request to create a connection with the server
             if (client_fd == socket_fd) {
-                printf("test!\n"); 
                 socklen_t addr_size = sizeof(address); 
                 int connected_fd = accept(socket_fd, (sockaddr *)&address, &addr_size);
                  if (connected_fd == -1) {
@@ -314,59 +368,8 @@ int main(int argc, char *argv[]) {
             }
             // Client sending over data through a socket 
             else {
-                bool deinitialize = false; 
-                state[client_fd].bytes_received = 
-                recv(
-                    client_fd, 
-                    (void*)(state[client_fd].client_buf + state[client_fd].num_bytes_read), 
-                    MAX_MSG_BYTES - state[client_fd].num_bytes_read, 
-                    0);
-                state[client_fd].num_bytes_read += state[client_fd].bytes_received;   
-                #if DEBUG
-                    printf("%.*s\n", state[client_fd].bytes_received, state[client_fd].client_buf + state[client_fd].num_bytes_read);
-                #endif 
-                // No errors, check if done parsing what the client sent. 
-                if (state[client_fd].bytes_received > 0 && 
-                    (state[client_fd].num_bytes_read <= MAX_MSG_BYTES)) {
-                    // Reached end of receiving client request, create a thread to now parse this request and potentially run it. 
-                    if (state[client_fd].client_buf[state[client_fd].num_bytes_read - 1] == '\0' 
-                        || state[client_fd].client_buf[state[client_fd].num_bytes_read - 1] == '\n') {
-                        deinitialize = true; 
-                        char* buf_ptr = state[client_fd].client_buf; 
-                        ThreadArgs* args = (ThreadArgs*)malloc(sizeof(ThreadArgs));
-                        args->client_fd = client_fd; 
-                        args->database = &database;
-                        memcpy(args->client_buf, state[client_fd].client_buf, sizeof(char) * state[client_fd].num_bytes_read);  
-                        pthread_t id; 
-                        pthread_create(&id, NULL, &request_trampoline, (void*)(args));  
-                    }
-                }
-                // If there is an error regarding the data sent or attempting to receive it. 
-                else {
-                    if (state[client_fd].bytes_received == 0) {
-                        printf("Error: Client closed socket for file descriptor %d.\n", client_fd); 
-                        close(socket_fd); 
-                    } 
-                    else if (state[client_fd].bytes_received == -1) {
-                        int err_val = errno; 
-                        printf("Error occurred regarding socket %d, errno value: %d.\n", client_fd, err_val);
-                        return -1; 
-                    }
-                    else if (state[client_fd].num_bytes_read > MAX_MSG_BYTES) {
-                        printf("Invalid message: too large.\n"); 
-                        close(client_fd); 
-                    }
-                    deinitialize = true; 
-                }
-                // Reset state to not provide false data if a future connection reoccupies this file descriptor. 
-                if (deinitialize) {
-                    memset(state[client_fd].client_buf, 0, sizeof(char) * MAX_MSG_BYTES); 
-                    state[client_fd].num_bytes_read = 0; 
-                    state[client_fd].bytes_received = 0; 
-                    if (epoll_ctl(epoll_fd, EPOLL_CTL_DEL, client_fd, &ev) == -1) {
-                        printf("Error: Epoll deletion of client fd %d failed.\n", client_fd); 
-                    }
-                }
+                receive_message(&database, epoll_fd, client_fd, state, &ev);
+                printf("test2\n");
             }
         }
     }
