@@ -101,7 +101,7 @@ bool cmd_parser(char client_req[MAX_MSG_BYTES], char** cmd) {
     (*cmd)[CMD_LENGTH] = '\0'; 
 
     #if DEBUG
-    printf("Test, cmd = %s\n", *cmd); 
+    printf("cmd = %s\n", *cmd); 
     #endif
 
     if (strcmp((*cmd), "PUT\0") != 0 && strcmp((*cmd), "GET\0") != 0) {
@@ -220,7 +220,8 @@ void request_handler(char client_req[MAX_MSG_BYTES], KVDataBase* database, int c
     client_response(client_fd, cmd, op_success, get_result);  
 }
 
-// A trampoline function used to cleanly pass in argument variables. This will eventually be removed. 
+// A trampoline function used to cleanly pass in argument variables and deallocate them after their used. 
+// This will eventually be removed. 
 void* request_trampoline(void* thread_args) {
     ThreadArgs* args = (ThreadArgs*)thread_args;
     request_handler(args->client_buf, args->database, args->client_fd);
@@ -230,10 +231,9 @@ void* request_trampoline(void* thread_args) {
     return NULL; 
 }
 
-// Supported format type: GET <string> or PUT <string> <arbitrary value><\0 or \n>
+// Supported format type: GET <key string>\0 or PUT <key string> <arbitrary value><\0 or \n>
 // Note that the arbitrary value's maximum size is 512 bytes. 
 // A valid request needs to have a null terminator or endline character so the server knows when to stop reading.  
-// TODO: Create new helper function for the epoll parsing loop
 void receive_message(KVDataBase* database, int epoll_fd, int client_fd, ConnectionState* state, epoll_event* ev) {
     bool deinitialize = false; 
     state[client_fd].bytes_received = 
@@ -295,12 +295,12 @@ int main(int argc, char *argv[]) {
     KVDataBase database; 
 
     // Socket code:
-    // check if a port is supplied, otherwise use a random available port (through port 0)
+    // Check if a port is supplied, otherwise use a random available port (through port 0)
     int port = 0;
     if (argc == 2) {
         port = atoi(argv[1]);
     }
-    // Create a socket
+    // Create a socket for the server. 
     int socket_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (socket_fd == -1) {
         printf("ERROR: Issue creating socket.\n");
@@ -339,6 +339,7 @@ int main(int argc, char *argv[]) {
         return -1; 
     }
 
+    // Begin accepting requests and handling them. 
     while (true) {
         int num_ready = epoll_wait(epoll_fd, events, RLIMIT_FSIZE, -1); 
         if (num_ready == -1) {
@@ -349,8 +350,6 @@ int main(int argc, char *argv[]) {
             int client_fd = events[i].data.fd; 
             #if DEBUG
                 printf("Client file descriptor from epoll ready list = %d.\n", client_fd); 
-                printf("Client fd == socket fd = %d.\n", client_fd == socket_fd);
-                printf("Socket fd initialized for server = %d.\n", socket_fd);  
             #endif 
             // Incoming client request to create a connection with the server
             if (client_fd == socket_fd) {
@@ -366,10 +365,9 @@ int main(int argc, char *argv[]) {
                     continue; 
                 }
             }
-            // Client sending over data through a socket 
+            // Client sending over a message (an operation) through a socket  
             else {
                 receive_message(&database, epoll_fd, client_fd, state, &ev);
-                printf("test2\n");
             }
         }
     }
